@@ -2,17 +2,25 @@ import customtkinter as ctk
 from PIL import Image, ImageTk, ImageFilter
 import re
 import tkinter.messagebox as messagebox
+import mysql.connector
+from dotenv import load_dotenv
+import os
+import hashlib
 
 class RegistrationApp(ctk.CTkFrame):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
         
+        # Configure window
         self.configure(fg_color="#f0f8ff")  
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        # Load background image
+        # Load environment variables
+        load_dotenv()
+
+        # Background Image
         try:
             bg_image = Image.open("registration.jpg") 
             bg_image = bg_image.resize((1920, 1080), Image.LANCZOS)
@@ -25,16 +33,16 @@ class RegistrationApp(ctk.CTkFrame):
 
         # Main registration frame
         self.main_frame = ctk.CTkFrame(self, 
-                                       corner_radius=22, 
-                                       fg_color="white", 
-                                       bg_color="transparent")
+                                     corner_radius=22, 
+                                     fg_color="white", 
+                                     bg_color="transparent")
         self.main_frame.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.4, relheight=0.8)
 
         # Registration title
         self.reg_title = ctk.CTkLabel(self.main_frame, 
-                                      text="Register", 
-                                      font=("Arial", 32, "bold"), 
-                                      text_color="blue")
+                                     text="Register", 
+                                     font=("Arial", 32, "bold"), 
+                                     text_color="blue")
         self.reg_title.pack(pady=(30, 20))
 
         # Full Name Entry
@@ -229,23 +237,66 @@ class RegistrationApp(ctk.CTkFrame):
             
         return valid
 
+    def _get_db_connection(self):
+        """Establish secure MySQL connection with SSL"""
+        try:
+            return mysql.connector.connect(
+                host=os.getenv("DB_HOST"),
+                port=int(os.getenv("DB_PORT")),
+                user=os.getenv("DB_USER"),
+                password=os.getenv("DB_PASSWORD"),
+                database=os.getenv("DB_NAME"),
+                ssl_ca=None,  # SSL will be used but without certificate verification
+                ssl_disabled=False
+            )
+        except Exception as e:
+            messagebox.showerror("Database Error", f"Cannot connect to database: {str(e)}")
+            return None
+
     def register_user(self):
         if not self.validate_form():
             return
             
-        # Here you would normally send data to your backend
         name = self.name_entry.get()
         email = self.email_entry.get()
         gender = self.gender_var.get()
+        password = self.password_entry.get()
         
-        messagebox.showinfo("Success", f"Registration successful!\n\nName: {name}\nEmail: {email}\nGender: {gender}")
+        # Hash password
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
         
-        # Clear form after successful registration
-        self.name_entry.delete(0, 'end')
-        self.email_entry.delete(0, 'end')
-        self.password_entry.delete(0, 'end')
-        self.terms_checkbox.deselect()
-        self.gender_var.set("Male")
-        
-        # Redirect to login page
-        self.controller.show_frame("LoginApp")
+        try:
+            conn = self._get_db_connection()
+            if conn:
+                cursor = conn.cursor()
+                
+                # Check if email exists
+                cursor.execute("SELECT email FROM users WHERE email = %s", (email,))
+                if cursor.fetchone():
+                    messagebox.showerror("Error", "Email already registered")
+                    return
+                
+                # Insert new user
+                cursor.execute(
+                    "INSERT INTO users (full_name, email, password_hash, gender) VALUES (%s, %s, %s, %s)",
+                    (name, email, hashed_password, gender)
+                )
+                conn.commit()
+                
+                messagebox.showinfo("Success", "Registration successful!")
+                
+                # Clear form
+                self.name_entry.delete(0, 'end')
+                self.email_entry.delete(0, 'end')
+                self.password_entry.delete(0, 'end')
+                self.terms_checkbox.deselect()
+                self.gender_var.set("Male")
+                
+                # Redirect to login
+                self.controller.show_frame("LoginApp")
+                
+        except Exception as e:
+            messagebox.showerror("Database Error", f"Registration failed: {str(e)}")
+        finally:
+            if 'conn' in locals() and conn.is_connected():
+                conn.close()

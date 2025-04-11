@@ -1,18 +1,19 @@
 import customtkinter as ctk
 from dashboard import HotelBookingDashboard
-from mcustomer import CustomerManagementScreen
-from Reservations import HotelReservationsPage
-from Report import HotelReportsPage
 from login import LoginApp
 from register import RegistrationApp
-from password_recovery import PasswordRecoveryApp
+from db_helper import DatabaseManager
 
 class HotelApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Hotel Management System")
+        self.title("Hotel Management System - Login")
         self.geometry("1400x900")
         ctk.set_appearance_mode("light")
+        
+        # Initialize database connection
+        self.db = DatabaseManager()
+        self.current_user = None
         
         # Create container frame
         self.container = ctk.CTkFrame(self)
@@ -22,31 +23,42 @@ class HotelApp(ctk.CTk):
         
         # Initialize all frames
         self.frames = {}
-        for F in (HotelBookingDashboard, CustomerManagementScreen, 
-                 HotelReservationsPage, HotelReportsPage, LoginApp,
-                 RegistrationApp, PasswordRecoveryApp):
+        
+        for F in (LoginApp, RegistrationApp, HotelBookingDashboard):
             frame = F(self.container, self)
             self.frames[F.__name__] = frame
             frame.grid(row=0, column=0, sticky="nsew")
         
+        # Show login frame first
         self.show_frame("LoginApp")
     
     def show_frame(self, page_name):
+        """Show a frame and update window title"""
         frame = self.frames[page_name]
         frame.tkraise()
         
-        # Update window title based on current page
+        # Update window title
         titles = {
-            "HotelBookingDashboard": "Dashboard - Hotel Management System",
-            "CustomerManagementScreen": "Customers - Hotel Management System",
-            "HotelReservationsPage": "Reservations - Hotel Management System",
-            "HotelReportsPage": "Reports - Hotel Management System",
-            "LoginApp": "Login - Hotel Management System",
-            "RegistrationApp": "Register - Hotel Management System",
-            "PasswordRecoveryApp": "Password Recovery - Hotel Management System"
+            "LoginApp": "Hotel Management System - Login",
+            "RegistrationApp": "Hotel Management System - Register",
+            "HotelBookingDashboard": "Hotel Management System - Dashboard"
         }
         self.title(titles.get(page_name, "Hotel Management System"))
+        
+        # Update dashboard if needed
+        if page_name == "HotelBookingDashboard" and self.current_user:
+            frame.update_user_display(self.current_user)
+    
+    def successful_login(self, user_data):
+        """Handle post-login operations"""
+        self.current_user = user_data
+        self.show_frame("HotelBookingDashboard")
+    
+    def __del__(self):
+        """Cleanup resources"""
+        if hasattr(self, 'db'):
+            self.db.close()
 
 if __name__ == "__main__":
     app = HotelApp()
-    app.mainloop()  
+    app.mainloop()

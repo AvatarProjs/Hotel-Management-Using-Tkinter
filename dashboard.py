@@ -6,6 +6,7 @@ class HotelBookingDashboard(ctk.CTkFrame):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
+        self.user_data = None
         
         # Configure grid layout
         self.grid_rowconfigure(0, weight=1)
@@ -14,6 +15,12 @@ class HotelBookingDashboard(ctk.CTkFrame):
         # Create components
         self.create_sidebar()
         self.create_main_content()
+    
+    def update_user_display(self, user_data):
+        """Update UI with current user data"""
+        self.user_data = user_data
+        self.welcome_label.configure(text=f"Good morning, {user_data['full_name']}")
+        self.profile_icon.configure(text=user_data['full_name'][0].upper())  # Show first initial
     
     def create_sidebar(self):
         sidebar = ctk.CTkFrame(self, width=250, fg_color="white", corner_radius=0)
@@ -56,9 +63,14 @@ class HotelBookingDashboard(ctk.CTkFrame):
             anchor="w",
             height=40,
             corner_radius=8,
-            command=lambda: self.controller.show_frame("LoginApp")
+            command=self.logout
         )
         logout_btn.pack(side="bottom", fill="x", padx=10, pady=20)
+    
+    def logout(self):
+        """Handle logout process"""
+        self.controller.current_user = None
+        self.controller.show_frame("LoginApp")
     
     def on_nav_button_click(self, button_name):
         # Update the selected button appearance
@@ -68,15 +80,9 @@ class HotelBookingDashboard(ctk.CTkFrame):
             else:
                 btn.configure(fg_color="transparent", text_color="#2c3e50")
         
-        # Route to the appropriate page
-        if button_name == "Dashboard":
-            self.controller.show_frame("HotelBookingDashboard")
-        elif button_name == "Customers":
-            self.controller.show_frame("CustomerManagementScreen")
-        elif button_name == "Reservations":
-            self.controller.show_frame("HotelReservationsPage")
-        elif button_name == "Reports":
-            self.controller.show_frame("HotelReportsPage")
+        # Here you would add logic to switch between dashboard views
+        # For now we'll just update the welcome message
+        self.welcome_label.configure(text=f"{button_name} View - {self.user_data['full_name']}")
     
     def create_main_content(self):
         # Main container
@@ -91,18 +97,17 @@ class HotelBookingDashboard(ctk.CTkFrame):
         header_frame.grid_columnconfigure(0, weight=1)
         header_frame.grid_columnconfigure(2, weight=1)
         
-        # Left side - Logo and Navigation
+        # Left side - Welcome message
         left_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
         left_frame.grid(row=0, column=0, padx=20, sticky="w")
         
-        # Logo placeholder
-        logo_label = ctk.CTkLabel(
+        self.welcome_label = ctk.CTkLabel(
             left_frame, 
-            text="Hotel Management", 
+            text="Good morning", 
             font=("Arial", 16, "bold"), 
             text_color="#2c3e50"
         )
-        logo_label.pack(side="left", padx=(0, 20))
+        self.welcome_label.pack(side="left", padx=(0, 20))
         
         # Center - Search bar
         search_entry = ctk.CTkEntry(
@@ -121,7 +126,7 @@ class HotelBookingDashboard(ctk.CTkFrame):
         icons_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
         icons_frame.grid(row=0, column=2, padx=20, sticky="e")
         
-        # Notification and profile icons
+        # Notification icon
         notification_icon = ctk.CTkButton(
             icons_frame, 
             text="🔔", 
@@ -134,45 +139,36 @@ class HotelBookingDashboard(ctk.CTkFrame):
         )
         notification_icon.pack(side="left", padx=10)
         
-        profile_icon = ctk.CTkButton(
+        # Profile icon (shows user initial)
+        self.profile_icon = ctk.CTkButton(
             icons_frame, 
             text="👤", 
             font=("Arial", 16),
             width=40,
             height=40,
-            fg_color="transparent",
-            hover_color="#f0f0f0",
-            text_color="black"
+            fg_color="#3b82f6",
+            hover_color="#2563eb",
+            text_color="white",
+            corner_radius=20
         )
-        profile_icon.pack(side="left", padx=10)
+        self.profile_icon.pack(side="left", padx=10)
         
         # ===== CONTENT AREA =====
         content = ctk.CTkScrollableFrame(main, fg_color="transparent")
-        content.grid(row=1, column=0, sticky="nsew")
-        
-        # Welcome message
-        welcome_frame = ctk.CTkFrame(content, fg_color="transparent")
-        welcome_frame.pack(fill="x", padx=20, pady=(20, 10))
-        
-        ctk.CTkLabel(
-            welcome_frame,
-            text="Good morning, Admin",
-            font=("Arial", 20, "bold"),
-            text_color="#2c3e50"
-        ).pack(side="left")
+        content.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
         
         # ===== METRICS CARDS =====
         metrics_frame = ctk.CTkFrame(content, fg_color="transparent")
-        metrics_frame.pack(fill="x", padx=20, pady=20)
+        metrics_frame.pack(fill="x", pady=(0, 20))
         
         metrics = [
-            ("$8,512", "Total bookings cost"),
-            ("1,200", "Active customers"),
-            ("4,000", "Total reservations"),
-            ("6,000", "Total revenue")
+            ("$8,512", "Total bookings cost", "#3b82f6"),
+            ("1,200", "Active customers", "#10b981"),
+            ("4,000", "Total reservations", "#f59e0b"),
+            ("6,000", "Total revenue", "#6366f1")
         ]
         
-        for value, label in metrics:
+        for value, label, color in metrics:
             card = ctk.CTkFrame(
                 metrics_frame,
                 fg_color="white",
@@ -185,7 +181,7 @@ class HotelBookingDashboard(ctk.CTkFrame):
                 card,
                 text=value,
                 font=("Arial", 24, "bold"),
-                text_color="#2c3e50"
+                text_color=color
             ).pack(pady=(25, 5), padx=20, anchor="w")
             
             ctk.CTkLabel(
@@ -197,11 +193,11 @@ class HotelBookingDashboard(ctk.CTkFrame):
         
         # ===== MONTHLY REVENUE GRAPH =====
         revenue_frame = ctk.CTkFrame(content, fg_color="white", corner_radius=12)
-        revenue_frame.pack(fill="x", padx=20, pady=(0, 20))
+        revenue_frame.pack(fill="x", pady=(0, 20))
         
         ctk.CTkLabel(
             revenue_frame,
-            text="Monthly revenue",
+            text="Monthly Revenue",
             font=("Arial", 16, "bold"),
             text_color="#2c3e50"
         ).pack(pady=(20, 15), padx=20, anchor="w")
@@ -226,137 +222,108 @@ class HotelBookingDashboard(ctk.CTkFrame):
         canvas.draw()
         canvas.get_tk_widget().pack(fill="x", padx=20, pady=(0, 20))
         
-        # ===== QUICK ACCESS =====
-        quick_access_frame = ctk.CTkFrame(content, fg_color="white", corner_radius=12)
-        quick_access_frame.pack(fill="x", padx=20, pady=(0, 20))
+        # ===== QUICK ACTIONS =====
+        quick_frame = ctk.CTkFrame(content, fg_color="white", corner_radius=12)
+        quick_frame.pack(fill="x", pady=(0, 20))
         
         ctk.CTkLabel(
-            quick_access_frame,
-            text="Quick access",
+            quick_frame,
+            text="Quick Actions",
             font=("Arial", 16, "bold"),
             text_color="#2c3e50"
         ).pack(pady=(20, 15), padx=20, anchor="w")
         
-        # Single row frame for all items
-        row_frame = ctk.CTkFrame(quick_access_frame, fg_color="transparent")
-        row_frame.pack(padx=20, pady=(0, 20), fill="x")
-        
-        quick_items = [
-            ("👥", "Customers", "Manage your customer profiles"),
-            ("💳", "Cards", "View and manage your saved cards"),
-            ("📅", "Reservations", "View and manage your reservations"),
-            ("📊", "Reports", "View and manage your reports")
+        # Action buttons
+        actions = [
+            ("➕ New Booking", "#3b82f6"),
+            ("👥 Add Customer", "#10b981"),
+            ("📅 View Calendar", "#f59e0b"),
+            ("📊 Generate Report", "#6366f1")
         ]
         
-        for icon, title, desc in quick_items:
-            card = ctk.CTkFrame(
-                row_frame,
-                fg_color="#f8fafc",
-                corner_radius=12,
-                height=100,
-                width=200
-            )
-            card.pack(side="left", expand=True, fill="both", padx=10)
-            
-            # Icon and title row
-            icon_frame = ctk.CTkFrame(card, fg_color="transparent")
-            icon_frame.pack(pady=(15, 5), padx=15, anchor="w")
-            
-            ctk.CTkLabel(
-                icon_frame,
-                text=icon,
-                font=("Arial", 20),
-                text_color="#3b82f6"
-            ).pack(side="left", padx=(0, 10))
-            
-            ctk.CTkLabel(
-                icon_frame,
-                text=title,
-                font=("Arial", 14, "bold"),
-                text_color="#2c3e50"
-            ).pack(side="left")
-            
-            # Description
-            ctk.CTkLabel(
-                card,
-                text=desc,
-                font=("Arial", 12),
-                text_color="#7f8c8d",
-                anchor="w",
-                justify="left"
-            ).pack(pady=(0, 15), padx=15, fill="x")
+        action_frame = ctk.CTkFrame(quick_frame, fg_color="transparent")
+        action_frame.pack(fill="x", padx=20, pady=(0, 20))
         
-        # ===== RECENT BOOKINGS =====
+        for text, color in actions:
+            btn = ctk.CTkButton(
+                action_frame,
+                text=text,
+                fg_color=color,
+                hover_color=self.darken_color(color, 0.2),
+                height=40,
+                corner_radius=8
+            )
+            btn.pack(side="left", expand=True, padx=10)
+        
+        # ===== RECENT BOOKINGS TABLE =====
         bookings_frame = ctk.CTkFrame(content, fg_color="white", corner_radius=12)
-        bookings_frame.pack(fill="x", padx=20, pady=(0, 20))
+        bookings_frame.pack(fill="x", pady=(0, 20))
         
         ctk.CTkLabel(
             bookings_frame,
-            text="Recent bookings",
+            text="Recent Bookings",
             font=("Arial", 16, "bold"),
             text_color="#2c3e50"
         ).pack(pady=(20, 15), padx=20, anchor="w")
         
-        # Table headers
-        headers = ["ID Number", "Status", "Payment Status", "Fulfillment Status", "Total Amount"]
+        # Table data
+        bookings = [
+            ["#1001", "Deluxe Suite", "2023-06-15", "$450", "Confirmed"],
+            ["#1002", "Standard Room", "2023-06-16", "$200", "Pending"],
+            ["#1003", "Executive Suite", "2023-06-17", "$380", "Confirmed"],
+            ["#1004", "Family Room", "2023-06-18", "$320", "Cancelled"]
+        ]
         
-        header_frame = ctk.CTkFrame(bookings_frame, fg_color="transparent")
-        header_frame.pack(fill="x", padx=20)
-        
-        for i in range(len(headers)):
-            header_frame.grid_columnconfigure(i, weight=1)
+        # Create table header
+        headers = ["Booking ID", "Room Type", "Date", "Price", "Status"]
+        header_frame = ctk.CTkFrame(bookings_frame, fg_color="#f3f4f6")
+        header_frame.pack(fill="x", padx=20, pady=(0, 5))
         
         for col, header in enumerate(headers):
             ctk.CTkLabel(
                 header_frame,
                 text=header,
                 font=("Arial", 12, "bold"),
-                text_color="#7f8c8d"
-            ).grid(row=0, column=col, padx=5, pady=5, sticky="ew")
+                text_color="#4b5563"
+            ).grid(row=0, column=col, padx=10, pady=5, sticky="w")
+            header_frame.grid_columnconfigure(col, weight=1)
         
-        # Table data
-        bookings = [
-            ("#12345", "Paid", "Not paid", "Pending", "$450.00"),
-            ("#12346", "Paid", "Not paid", "Pending", "$500.00"),
-            ("#12347", "Paid", "Not paid", "Pending", "$400.00"),
-            ("#12348", "Paid", "Not paid", "Pending", "$550.00"),
-            ("#12349", "Paid", "Not paid", "Pending", "$600.00")
-        ]
-        
+        # Create table rows
         for row, booking in enumerate(bookings, 1):
             row_frame = ctk.CTkFrame(
                 bookings_frame,
-                fg_color="#f8fafc" if row % 2 == 0 else "white"
+                fg_color="white",
+                height=40
             )
             row_frame.pack(fill="x", padx=20, pady=2)
             
-            for i in range(len(booking)):
-                row_frame.grid_columnconfigure(i, weight=1)
-            
             for col, value in enumerate(booking):
-                fg_color = "transparent"
-                text_color = "#2c3e50"
-                
-                if (row == 1 or row == 2) and col == 1 and value == "Paid":
-                    fg_color = "#3b82f6"
-                    text_color = "white"
-                elif row == 3 and col == 3 and value == "Pending":
-                    fg_color = "#f59e0b"
-                    text_color = "white"
-                elif row == 4 and col == 2 and value == "Not paid":
-                    fg_color = "#ef4444"
-                    text_color = "white"
-                elif row == 5 and col == 1 and value == "Paid":
-                    fg_color = "#3b82f6"
-                    text_color = "white"
+                # Determine status color
+                if col == 4:  # Status column
+                    if value == "Confirmed":
+                        text_color = "#10b981"
+                    elif value == "Pending":
+                        text_color = "#f59e0b"
+                    else:
+                        text_color = "#ef4444"
+                else:
+                    text_color = "#4b5563"
                 
                 ctk.CTkLabel(
                     row_frame,
                     text=value,
                     font=("Arial", 12),
-                    text_color=text_color,
-                    fg_color=fg_color,
-                    corner_radius=4,
-                    padx=8,
-                    pady=2
-                ).grid(row=0, column=col, padx=5, sticky="ew")
+                    text_color=text_color
+                ).grid(row=0, column=col, padx=10, sticky="w")
+                row_frame.grid_columnconfigure(col, weight=1)
+    
+    def darken_color(self, hex_color, factor=0.2):
+        """Darken a hex color by a given factor"""
+        hex_color = hex_color.lstrip('#')
+        rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+        darkened = tuple(max(0, int(channel * (1 - factor))) for channel in rgb)
+        return f"#{darkened[0]:02x}{darkened[1]:02x}{darkened[2]:02x}"
+    
+    def __del__(self):
+        """Clean up resources"""
+        plt.close('all')  # Close matplotlib figures

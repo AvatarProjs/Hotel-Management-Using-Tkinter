@@ -3,17 +3,13 @@ import tkinter as tk
 from PIL import Image, ImageTk, ImageFilter
 import os
 
-# Set appearance mode and default color theme
-ctk.set_appearance_mode("light")
-ctk.set_default_color_theme("blue")
-
-class HotelBookingSystem(ctk.CTk):
-    def __init__(self):
-        super().__init__()
+class HotelBookingSystem(ctk.CTkFrame):  # Changed from CTk to CTkFrame
+    def __init__(self, parent, controller):
+        super().__init__(parent)  # Changed to match CTkFrame initialization
+        self.controller = controller
         
         # Configure window
-        self.title("Hotel Booking and Management System")
-        self.geometry("1200x700")
+        self.configure(fg_color="#f0f8ff")  # Set frame background
         
         # Load the hotel lobby image
         try:
@@ -60,7 +56,8 @@ class HotelBookingSystem(ctk.CTk):
             text="Sign-in", 
             width=80,
             height=28,
-            corner_radius=5
+            corner_radius=5,
+            command=lambda: controller.show_frame("LoginApp")  # Added command
         )
         self.signin_button.pack(side="right", padx=20, pady=5)
         
@@ -93,10 +90,7 @@ class HotelBookingSystem(ctk.CTk):
             hover_color="#555555",
             corner_radius=5,
             width=120,
-            height=35
+            height=35,
+            command=lambda: controller.show_frame("RegistrationApp")  # Added command
         )
         self.get_started_button.place(relx=0.5, rely=0.75, anchor="center")
-
-if __name__ == "__main__":
-    app = HotelBookingSystem()
-    app.mainloop()

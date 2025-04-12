@@ -25,112 +25,131 @@ class CustomerManagementScreen(ctk.CTkFrame):
         self.create_main_content()
     
     def create_sidebar(self):
-        sidebar = ctk.CTkFrame(self, width=200, fg_color="#2c3e50", corner_radius=0)
+        sidebar = ctk.CTkFrame(self, width=250, fg_color="#f0f9ff", corner_radius=0)
         sidebar.grid(row=0, column=0, sticky="nsew")
         
-        # Logo
-        logo_frame = ctk.CTkFrame(sidebar, fg_color="transparent")
-        logo_frame.pack(pady=(20, 30), padx=10, fill="x")
-        
-        ctk.CTkLabel(
-            logo_frame, 
-            text="Hotel System", 
-            font=("Arial", 18, "bold"), 
-            text_color="white"
-        ).pack()
-        
-        # Navigation buttons
+        # Navigation items
         nav_items = [
-            ("🏠", "Dashboard"),
-            ("👥", "Customers"),
-            ("🛒", "Reservations"),
-            ("📊", "Reports")
+            ("Dashboard", "📊", "HotelBookingDashboard"),
+            ("Reservations", "🛒", "HotelReservationsPage"), 
+            ("Customers", "👥", "CustomerManagementScreen"),
+            ("Reports", "📄", "HotelReportsPage")
         ]
         
-        for icon, item in nav_items:
-            btn = ctk.CTkButton(
-                sidebar,
-                text=f"{icon} {item}",
-                fg_color="#3b82f6" if item == "Customers" else "transparent",
-                text_color="white",
-                anchor="w",
-                height=40,
-                corner_radius=8,
-                hover_color="#2563eb" if item == "Customers" else "#34495e",
-                command=lambda x=item: self.on_nav_button_click(x)
-            )
-            btn.pack(fill="x", padx=10, pady=5)
+        # Add padding
+        padding = ctk.CTkLabel(sidebar, text="", fg_color="transparent")
+        padding.pack(pady=(20, 10))
         
-        # Add logout button at bottom
-        logout_btn = ctk.CTkButton(
-            sidebar,
+        # Add navigation buttons
+        for item, icon, frame_name in nav_items:
+            is_active = frame_name == "CustomerManagementScreen"
+            btn_color = "#dbeafe" if is_active else "transparent"
+            
+            btn_frame = ctk.CTkFrame(sidebar, fg_color=btn_color, corner_radius=8)
+            btn_frame.pack(fill="x", padx=15, pady=5)
+            
+            content_frame = ctk.CTkFrame(btn_frame, fg_color="transparent")
+            content_frame.pack(pady=8, padx=15, anchor="w")
+            
+            ctk.CTkLabel(
+                content_frame,
+                text=icon,
+                font=("Arial", 16),
+                text_color="#64748b"
+            ).pack(side="left", padx=(0, 10))
+            
+            btn = ctk.CTkButton(
+                content_frame,
+                text=item,
+                font=("Arial", 14),
+                text_color="#64748b",
+                fg_color="transparent",
+                hover_color="#f0f0f0",
+                anchor="w",
+                command=lambda fn=frame_name: self.controller.show_frame(fn)
+            )
+            btn.pack(side="left")
+        
+        # Add logout button
+        logout_frame = ctk.CTkFrame(sidebar, fg_color="transparent")
+        logout_frame.pack(side="bottom", fill="x", padx=15, pady=20)
+        
+        ctk.CTkButton(
+            logout_frame,
             text="Logout",
             fg_color="#ef4444",
-            text_color="white",
-            anchor="w",
-            height=40,
-            corner_radius=8,
+            hover_color="#dc2626",
             command=lambda: self.controller.show_frame("LoginApp")
-        )
-        logout_btn.pack(side="bottom", fill="x", padx=10, pady=20)
-    
-    def on_nav_button_click(self, button_name):
-        if button_name == "Dashboard":
-            self.controller.show_frame("HotelBookingDashboard")
-        elif button_name == "Customers":
-            self.controller.show_frame("CustomerManagementScreen")
-        elif button_name == "Reservations":
-            self.controller.show_frame("HotelReservationsPage")
-        elif button_name == "Reports":
-            self.controller.show_frame("HotelReportsPage")
+        ).pack(fill="x")
     
     def create_main_content(self):
+        """Create the main content area with customer management"""
         # Main container
-        main = ctk.CTkFrame(self, fg_color="#f8f9fa")
+        main = ctk.CTkFrame(self, fg_color="white")
         main.grid(row=0, column=1, sticky="nsew")
         main.grid_rowconfigure(1, weight=1)
         main.grid_columnconfigure(0, weight=1)
         
-        # Header
-        header_frame = ctk.CTkFrame(main, height=60, fg_color="white", corner_radius=0)
-        header_frame.grid(row=0, column=0, sticky="ew")
+        # ===== HEADER SECTION =====
+        header_frame = ctk.CTkFrame(main, height=70, fg_color="white", corner_radius=0)
+        header_frame.grid(row=0, column=0, sticky="ew", padx=0, pady=0)
         
-        # Page title
-        ctk.CTkLabel(
-            header_frame,
-            text="Customers",
-            font=("Arial", 20, "bold"),
+        # Create header with evenly spaced items
+        header_frame.grid_columnconfigure(0, weight=0)  # Logo
+        header_frame.grid_columnconfigure(1, weight=1)  # Nav Items (centered)
+        header_frame.grid_columnconfigure(2, weight=0)  # Icons
+        
+        # Logo
+        logo_label = ctk.CTkLabel(
+            header_frame, 
+            text="Hotel Booking and Management System", 
+            font=("Arial", 16, "bold"), 
             text_color="#2c3e50"
-        ).pack(side="left", padx=20)
-        
-        # Search and add buttons on right
-        button_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
-        button_frame.pack(side="right", padx=20)
-        
-        # Search entry
-        self.search_entry = ctk.CTkEntry(
-            button_frame,
-            placeholder_text="Search...",
-            width=200,
-            height=35
         )
-        self.search_entry.pack(side="left", padx=5)
-        self.search_entry.bind("<KeyRelease>", self.search_customers)
+        logo_label.grid(row=0, column=0, padx=(20, 10), pady=20, sticky="w")
         
-        # Add customer button
-        add_btn = ctk.CTkButton(
-            button_frame,
-            text="+ Add Customer",
-            fg_color="#3b82f6",
-            text_color="white",
-            width=120,
-            height=35,
-            command=self.open_add_customer_dialog
-        )
-        add_btn.pack(side="left", padx=5)
+        # Navigation items in header
+        nav_items = [
+            ("Dashboard", "HotelBookingDashboard"),
+            ("Customers", "CustomerManagementScreen"),
+            ("Reservations", "HotelReservationsPage"),
+            ("Reports", "HotelReportsPage")
+        ]
         
-        # Content area
-        content = ctk.CTkScrollableFrame(main, fg_color="transparent")
+        nav_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        nav_frame.grid(row=0, column=1, sticky="")
+        
+        for item, frame_name in nav_items:
+            text_color = "#3b82f6" if frame_name == self.__class__.__name__ else "#64748b"
+            btn = ctk.CTkButton(
+                nav_frame,
+                text=item,
+                fg_color="transparent",
+                text_color=text_color,
+                hover_color="#f8f8f8",
+                corner_radius=5,
+                height=32,
+                border_width=0,
+                command=lambda fn=frame_name: self.controller.show_frame(fn)
+            )
+            btn.pack(side="left", padx=15)
+        
+        # Right side icons
+        icons_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        icons_frame.grid(row=0, column=2, padx=20, sticky="e")
+        
+        # Search, notification and profile icons
+        search_icon = ctk.CTkLabel(icons_frame, text="🔍", font=("Arial", 20))
+        search_icon.pack(side="left", padx=10)
+        
+        notification_icon = ctk.CTkLabel(icons_frame, text="🔔", font=("Arial", 20))
+        notification_icon.pack(side="left", padx=10)
+        
+        profile_icon = ctk.CTkLabel(icons_frame, text="👤", font=("Arial", 20))
+        profile_icon.pack(side="left", padx=10)
+        
+        # ===== SCROLLABLE CONTENT AREA =====
+        content = ctk.CTkScrollableFrame(main, fg_color="#f8fafc")
         content.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
         content.grid_columnconfigure(0, weight=1)
         

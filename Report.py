@@ -9,46 +9,101 @@ class HotelReportsPage(ctk.CTkFrame):
         super().__init__(parent)
         self.controller = controller
         
+        # Initialize data
+        self.reports_data = self.load_data()
+        
         # Configure grid layout
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
-        
-        # Initialize data
-        self.reports_data = self.load_data()
         
         # Create components
         self.create_sidebar()
         self.create_main_content()
     
+    def load_data(self):
+        """Load reports data"""
+        try:
+            if os.path.exists("reports_data.json"):
+                with open("reports_data.json", "r") as f:
+                    return json.load(f)
+            else:
+                # Default data if file doesn't exist
+                data = {
+                    "new_customers": {
+                        "Jul": 512,
+                        "Aug": 580,
+                        "Sep": 425,
+                        "Oct": 620,
+                        "Nov": 575,
+                        "Dec": 430
+                    },
+                    "total_customers": {
+                        "Jul": 4500,
+                        "Aug": 4750,
+                        "Sep": 4950,
+                        "Oct": 5250,
+                        "Nov": 5000,
+                        "Dec": 5000
+                    },
+                    "new_customers_list": [
+                        {"name": "George Smith", "email": "george@gmail.com", "phone": "123-456-7890", "signup_date": "November 1, 2024"},
+                        {"name": "Sarah Brown", "email": "sarah@gmail.com", "phone": "234-567-8901", "signup_date": "November 2, 2024"},
+                        {"name": "Michael Johnson", "email": "michael@gmail.com", "phone": "345-678-9012", "signup_date": "November 3, 2024"},
+                        {"name": "Emily Davis", "email": "emily@gmail.com", "phone": "456-789-0123", "signup_date": "November 4, 2024"},
+                        {"name": "Daniel Miller", "email": "daniel@gmail.com", "phone": "567-890-1234", "signup_date": "November 5, 2024"}
+                    ],
+                    "revenue_data": {
+                        "Jul": 45000,
+                        "Aug": 52000,
+                        "Sep": 48000,
+                        "Oct": 63000,
+                        "Nov": 57000,
+                        "Dec": 51000
+                    },
+                    "occupancy_data": {
+                        "Jul": 78,
+                        "Aug": 85,
+                        "Sep": 72,
+                        "Oct": 90,
+                        "Nov": 82,
+                        "Dec": 75
+                    }
+                }
+                
+                with open("reports_data.json", "w") as f:
+                    json.dump(data, f, indent=2)
+                return data
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load data: {str(e)}")
+            return {}
+    
     def create_sidebar(self):
         sidebar = ctk.CTkFrame(self, width=250, fg_color="#f0f9ff", corner_radius=0)
         sidebar.grid(row=0, column=0, sticky="nsew")
         
-        # Navigation items with simpler styling matching the image
+        # Navigation items
         nav_items = [
-            ("Dashboard", "📊"),
-            ("Reservations", "🛒"),
-            ("Customers", "👥"),
-            ("Reports", "📄")
+            ("Dashboard", "📊", "HotelBookingDashboard"),
+            ("Reservations", "🛒", "HotelReservationsPage"),
+            ("Customers", "👥", "CustomerManagementScreen"),
+            ("Reports", "📄", "HotelReportsPage")
         ]
         
-        # Add padding at the top
+        # Add padding
         padding = ctk.CTkLabel(sidebar, text="", fg_color="transparent")
         padding.pack(pady=(20, 10))
         
-        for item, icon in nav_items:
-            # Determine if this is the active item
-            is_active = item == "Reports"
+        # Add navigation buttons
+        for item, icon, frame_name in nav_items:
+            is_active = frame_name == "HotelReportsPage"
             btn_color = "#dbeafe" if is_active else "transparent"
             
             btn_frame = ctk.CTkFrame(sidebar, fg_color=btn_color, corner_radius=8)
             btn_frame.pack(fill="x", padx=15, pady=5)
             
-            # Container for icon and text
             content_frame = ctk.CTkFrame(btn_frame, fg_color="transparent")
             content_frame.pack(pady=8, padx=15, anchor="w")
             
-            # Icon
             ctk.CTkLabel(
                 content_frame,
                 text=icon,
@@ -56,7 +111,6 @@ class HotelReportsPage(ctk.CTkFrame):
                 text_color="#64748b"
             ).pack(side="left", padx=(0, 10))
             
-            # Text with clickable command
             btn = ctk.CTkButton(
                 content_frame,
                 text=item,
@@ -64,34 +118,22 @@ class HotelReportsPage(ctk.CTkFrame):
                 text_color="#64748b",
                 fg_color="transparent",
                 hover_color="#f0f0f0",
-                command=lambda x=item: self.on_nav_button_click(x),
-                anchor="w"
+                anchor="w",
+                command=lambda fn=frame_name: self.controller.show_frame(fn)
             )
             btn.pack(side="left")
-            
-            # Make entire frame clickable
-            btn_frame.bind("<Button-1>", lambda e, x=item: self.on_nav_button_click(x))
         
-        # Add logout button at bottom
-        logout_btn = ctk.CTkButton(
-            sidebar,
+        # Add logout button
+        logout_frame = ctk.CTkFrame(sidebar, fg_color="transparent")
+        logout_frame.pack(side="bottom", fill="x", padx=15, pady=20)
+        
+        ctk.CTkButton(
+            logout_frame,
             text="Logout",
             fg_color="#ef4444",
-            text_color="white",
+            hover_color="#dc2626",
             command=lambda: self.controller.show_frame("LoginApp")
-        )
-        logout_btn.pack(side="bottom", fill="x", padx=15, pady=20)
-    
-    def on_nav_button_click(self, button_name):
-        """Handle navigation button clicks"""
-        if button_name == "Dashboard":
-            self.controller.show_frame("HotelBookingDashboard")
-        elif button_name == "Reservations":
-            self.controller.show_frame("HotelReservationsPage")
-        elif button_name == "Customers":
-            self.controller.show_frame("CustomerManagementScreen")
-        elif button_name == "Reports":
-            self.controller.show_frame("HotelReportsPage")
+        ).pack(fill="x")
     
     def create_main_content(self):
         """Create the main content area with reports"""
@@ -120,22 +162,28 @@ class HotelReportsPage(ctk.CTkFrame):
         logo_label.grid(row=0, column=0, padx=(20, 10), pady=20, sticky="w")
         
         # Navigation items in header
-        nav_items = ["Dashboard", "Customers", "Reservations", "Reports"]
+        nav_items = [
+            ("Dashboard", "HotelBookingDashboard"),
+            ("Customers", "CustomerManagementScreen"),
+            ("Reservations", "HotelReservationsPage"),
+            ("Reports", "HotelReportsPage")
+        ]
+        
         nav_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
         nav_frame.grid(row=0, column=1, sticky="")
         
-        for idx, item in enumerate(nav_items):
-            text_color = "#3b82f6" if item == "Reports" else "#64748b"
+        for item, frame_name in nav_items:
+            text_color = "#3b82f6" if frame_name == self.__class__.__name__ else "#64748b"
             btn = ctk.CTkButton(
                 nav_frame,
                 text=item,
                 fg_color="transparent",
                 text_color=text_color,
-                hover_color="#f0f0f0",
+                hover_color="#f8f8f8",
                 corner_radius=5,
                 height=32,
                 border_width=0,
-                command=lambda x=item: self.on_nav_button_click(x)
+                command=lambda fn=frame_name: self.controller.show_frame(fn)
             )
             btn.pack(side="left", padx=15)
         
@@ -549,60 +597,3 @@ class HotelReportsPage(ctk.CTkFrame):
     def export_data(self):
         """Export report data"""
         messagebox.showinfo("Export Data", "Export functionality would save the report data to CSV or Excel format.")
-    
-    def load_data(self):
-        """Load reports data"""
-        try:
-            if os.path.exists("reports_data.json"):
-                with open("reports_data.json", "r") as f:
-                    return json.load(f)
-            else:
-                # Default data if file doesn't exist
-                data = {
-                    "new_customers": {
-                        "Jul": 512,
-                        "Aug": 580,
-                        "Sep": 425,
-                        "Oct": 620,
-                        "Nov": 575,
-                        "Dec": 430
-                    },
-                    "total_customers": {
-                        "Jul": 4500,
-                        "Aug": 4750,
-                        "Sep": 4950,
-                        "Oct": 5250,
-                        "Nov": 5000,
-                        "Dec": 5000
-                    },
-                    "new_customers_list": [
-                        {"name": "George Smith", "email": "george@gmail.com", "phone": "123-456-7890", "signup_date": "November 1, 2024"},
-                        {"name": "Sarah Brown", "email": "sarah@gmail.com", "phone": "234-567-8901", "signup_date": "November 2, 2024"},
-                        {"name": "Michael Johnson", "email": "michael@gmail.com", "phone": "345-678-9012", "signup_date": "November 3, 2024"},
-                        {"name": "Emily Davis", "email": "emily@gmail.com", "phone": "456-789-0123", "signup_date": "November 4, 2024"},
-                        {"name": "Daniel Miller", "email": "daniel@gmail.com", "phone": "567-890-1234", "signup_date": "November 5, 2024"}
-                    ],
-                    "revenue_data": {
-                        "Jul": 45000,
-                        "Aug": 52000,
-                        "Sep": 48000,
-                        "Oct": 63000,
-                        "Nov": 57000,
-                        "Dec": 51000
-                    },
-                    "occupancy_data": {
-                        "Jul": 78,
-                        "Aug": 85,
-                        "Sep": 72,
-                        "Oct": 90,
-                        "Nov": 82,
-                        "Dec": 75
-                    }
-                }
-                
-                with open("reports_data.json", "w") as f:
-                    json.dump(data, f, indent=2)
-                return data
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to load data: {str(e)}")
-            return {}

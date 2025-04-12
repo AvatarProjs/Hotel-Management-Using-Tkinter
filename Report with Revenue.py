@@ -1,9 +1,7 @@
 import customtkinter as ctk
-from tkinter import messagebox, filedialog
+from tkinter import messagebox
 from datetime import datetime, timedelta
 import csv
-import os
-from fpdf import FPDF
 
 class HotelReportsPage(ctk.CTkFrame):
     def __init__(self, parent, controller):
@@ -20,35 +18,30 @@ class HotelReportsPage(ctk.CTkFrame):
             "new_customers": {},
             "total_customers": {},
             "revenue_data": {},
-            "booking_data": {},
+            "occupancy_data": {},
             "new_customers_list": []
         }
         
         self.create_sidebar()
         self.create_main_content()
         self.refresh_data()
-        self.after(30000, self.auto_refresh)
+        self.after(30000, self.auto_refresh)  # Auto-refresh every 30 seconds
 
     def refresh_data(self):
-        """Refresh all data from database"""
+        """Refresh all data from database with proper error handling"""
         try:
             # Get data from database
-            customer_growth = self.db.get_customer_growth() or {}
-            total_customers = self._calculate_cumulative_customers(customer_growth)
-            booking_trends = self.db.get_booking_trends() or {}
-            revenue_trends = self.db.get_revenue_trends() or {}
-            
             self.reports_data = {
-                "new_customers": customer_growth,
-                "total_customers": total_customers,
-                "revenue_data": revenue_trends,
-                "booking_data": booking_trends,
+                "new_customers": self.db.get_customer_growth() or {},
+                "total_customers": self.db.get_total_customers() or {},
+                "revenue_data": self.db.get_revenue_data() or {},
+                "occupancy_data": self.db.get_occupancy_data() or {},
                 "new_customers_list": self.db.get_recent_customers(5) or []
             }
             
             # Fill in missing months with zeros
             months = self._get_last_six_months()
-            for metric in ["new_customers", "total_customers", "revenue_data", "booking_data"]:
+            for metric in ["new_customers", "total_customers", "revenue_data", "occupancy_data"]:
                 for month in months:
                     if month not in self.reports_data[metric]:
                         self.reports_data[metric][month] = 0
@@ -57,24 +50,16 @@ class HotelReportsPage(ctk.CTkFrame):
             
         except Exception as e:
             messagebox.showerror("Database Error", f"Failed to load data: {str(e)}")
+            # Initialize with empty data if database fails
             months = self._get_last_six_months()
             self.reports_data = {
                 "new_customers": {month: 0 for month in months},
                 "total_customers": {month: 0 for month in months},
                 "revenue_data": {month: 0 for month in months},
-                "booking_data": {month: 0 for month in months},
+                "occupancy_data": {month: 0 for month in months},
                 "new_customers_list": []
             }
             self.update_ui()
-
-    def _calculate_cumulative_customers(self, customer_growth):
-        """Calculate cumulative total customers from growth data"""
-        total = 0
-        cumulative = {}
-        for month, count in sorted(customer_growth.items()):
-            total += count
-            cumulative[month] = total
-        return cumulative
 
     def _get_last_six_months(self):
         """Helper to get last 6 month abbreviations"""
@@ -107,12 +92,12 @@ class HotelReportsPage(ctk.CTkFrame):
             self.total_customers_label.configure(text=f"{total:,}")
             
             # Revenue
-            revenue = sum(self.reports_data["revenue_data"].values())
+            revenue = self.reports_data["revenue_data"].get(last_month, 0)
             self.revenue_label.configure(text=f"${revenue:,.2f}")
             
-            # Bookings
-            bookings = sum(self.reports_data["booking_data"].values())
-            self.bookings_label.configure(text=f"{bookings:,}")
+            # Occupancy Rate
+            occupancy = self.reports_data["occupancy_data"].get(last_month, 0)
+            self.occupancy_label.configure(text=f"{occupancy:.1f}%")
             
         except Exception as e:
             messagebox.showerror("UI Error", f"Failed to update metrics: {str(e)}")
@@ -124,9 +109,9 @@ class HotelReportsPage(ctk.CTkFrame):
                 self.revenue_canvas.delete("all")
                 self.draw_revenue_chart()
                 
-            if hasattr(self, 'bookings_canvas'):
-                self.bookings_canvas.delete("all")
-                self.draw_bookings_chart()
+            if hasattr(self, 'occupancy_canvas'):
+                self.occupancy_canvas.delete("all")
+                self.draw_occupancy_chart()
                 
             if hasattr(self, 'new_customers_card'):
                 for widget in self.new_customers_card.winfo_children():
@@ -140,178 +125,6 @@ class HotelReportsPage(ctk.CTkFrame):
                 
         except Exception as e:
             messagebox.showerror("Chart Error", f"Failed to update charts: {str(e)}")
-
-    def draw_total_customers_chart(self):
-        """Draw the total customers line chart"""
-        months = list(self.reports_data["total_customers"].keys())
-        if not months:
-            return
-            
-        width = self.total_customers_canvas.winfo_width()
-        height = 150
-        padding = 30
-        
-        data = self.reports_data["total_customers"]
-        values = [data[month] for month in months]
-        min_value = min(values)
-        max_value = max(values)
-        value_range = max_value - min_value if max_value != min_value else 1
-        
-        points = []
-        for i, month in enumerate(months):
-            x = padding + (i * ((width - 2 * padding) / (len(months) - 1)))
-            y = height - padding - ((data[month] - min_value) / value_range) * (height - 2 * padding)
-            points.append((x, y))
-            
-            self.total_customers_canvas.create_text(
-                x, height - 10, 
-                text=month, 
-                fill="#64748b", 
-                font=("Arial", 10)
-            )
-        
-        for i in range(len(points) - 1):
-            self.total_customers_canvas.create_line(
-                points[i][0], points[i][1], 
-                points[i+1][0], points[i+1][1],
-                fill="#3b82f6", width=2
-            )
-            
-            self.total_customers_canvas.create_text(
-                points[i][0], points[i][1] - 15,
-                text=f"{values[i]:,}",
-                fill="#3b82f6",
-                font=("Arial", 8)
-            )
-        
-        self.total_customers_canvas.create_text(
-            points[-1][0], points[-1][1] - 15,
-            text=f"{values[-1]:,}",
-            fill="#3b82f6",
-            font=("Arial", 8)
-        )
-
-    def draw_new_customers_chart(self):
-        """Draw the new customers bar chart"""
-        months = list(self.reports_data["new_customers"].keys())
-        if not months:
-            return
-            
-        data = self.reports_data["new_customers"]
-        max_value = max(data.values()) or 1
-        
-        for month in months:
-            bar_frame = ctk.CTkFrame(self.new_customers_card, fg_color="transparent")
-            bar_frame.is_bar = True
-            bar_frame.pack(fill="x", padx=20, pady=5)
-            
-            ctk.CTkLabel(
-                bar_frame,
-                text=month,
-                font=("Arial", 12),
-                text_color="#64748b",
-                width=30
-            ).pack(side="left", padx=(0, 10))
-            
-            bar_container = ctk.CTkFrame(bar_frame, height=10, fg_color="#e2e8f0", corner_radius=5)
-            bar_container.pack(side="left", fill="x", expand=True)
-            
-            width_percent = (data[month] / max_value) * 100
-            bar = ctk.CTkFrame(bar_container, height=10, fg_color="#3b82f6", corner_radius=5)
-            bar.place(relx=0, rely=0, relwidth=width_percent/100, relheight=1)
-
-    def draw_revenue_chart(self):
-        """Draw the revenue bar chart"""
-        months = list(self.reports_data["revenue_data"].keys())
-        if not months:
-            return
-            
-        width = self.revenue_canvas.winfo_width()
-        height = 100
-        padding = 30
-        
-        data = self.reports_data["revenue_data"]
-        values = [data[month] for month in months]
-        max_value = max(values) or 1
-        
-        bar_width = width / len(months) * 0.6
-        spacing = width / len(months)
-        
-        for i, (month, value) in enumerate(zip(months, values)):
-            x = padding + (i * spacing)
-            bar_height = (value / max_value) * (height - 2 * padding - 20)
-            
-            self.revenue_canvas.create_rectangle(
-                x, height - padding - bar_height,
-                x + bar_width, height - padding,
-                fill="#10b981", outline=""
-            )
-            
-            self.revenue_canvas.create_text(
-                x + bar_width/2, height - padding - bar_height - 10,
-                text=f"${value/1000:.1f}k" if value >= 1000 else f"${value:.0f}",
-                fill="#10b981", font=("Arial", 8)
-            )
-            
-            self.revenue_canvas.create_text(
-                x + bar_width/2, height - 10,
-                text=month, fill="#64748b", font=("Arial", 10)
-            )
-
-    def draw_bookings_chart(self):
-        """Draw the bookings line chart"""
-        months = list(self.reports_data["booking_data"].keys())
-        if not months:
-            return
-            
-        width = self.bookings_canvas.winfo_width()
-        height = 100
-        padding = 30
-        
-        data = self.reports_data["booking_data"]
-        values = [data[month] for month in months]
-        
-        points = []
-        for i, (month, value) in enumerate(zip(months, values)):
-            x = padding + (i * ((width - 2 * padding) / (len(months) - 1)))
-            y = height - padding - (value / max(values) * (height - 2 * padding - 20)) if max(values) > 0 else height - padding
-            points.append((x, y))
-            
-            self.bookings_canvas.create_text(
-                x, height - 10,
-                text=month, fill="#64748b", font=("Arial", 10)
-            )
-        
-        for i in range(len(points) - 1):
-            self.bookings_canvas.create_line(
-                points[i][0], points[i][1], 
-                points[i+1][0], points[i+1][1],
-                fill="#f59e0b", width=2
-            )
-            
-            self.bookings_canvas.create_oval(
-                points[i][0] - 3, points[i][1] - 3,
-                points[i][0] + 3, points[i][1] + 3,
-                fill="#f59e0b", outline=""
-            )
-            self.bookings_canvas.create_text(
-                points[i][0], points[i][1] - 15,
-                text=f"{values[i]}",
-                fill="#f59e0b",
-                font=("Arial", 8)
-            )
-        
-        self.bookings_canvas.create_oval(
-            points[-1][0] - 3, points[-1][1] - 3,
-            points[-1][0] + 3, points[-1][1] + 3,
-            fill="#f59e0b", outline=""
-        )
-        self.bookings_canvas.create_text(
-            points[-1][0], points[-1][1] - 15,
-            text=f"{values[-1]}",
-            fill="#f59e0b",
-            font=("Arial", 8)
-        )
 
     def update_customer_list(self):
         """Update the recent customers list"""
@@ -335,42 +148,6 @@ class HotelReportsPage(ctk.CTkFrame):
                     
         except Exception as e:
             messagebox.showerror("List Error", f"Failed to update customer list: {str(e)}")
-
-    def add_customer_row(self, customer):
-        """Add a row to the customer list"""
-        row_frame = ctk.CTkFrame(self.customer_list_frame, fg_color="transparent")
-        row_frame.pack(fill="x", padx=20, pady=10)
-        
-        ctk.CTkLabel(
-            row_frame,
-            text=customer.get("name", "N/A"),
-            font=("Arial", 14),
-            text_color="#475569"
-        ).pack(side="left", expand=True, fill="x")
-        
-        ctk.CTkLabel(
-            row_frame,
-            text=customer.get("email", "N/A"),
-            font=("Arial", 14),
-            text_color="#475569"
-        ).pack(side="left", expand=True, fill="x")
-        
-        ctk.CTkLabel(
-            row_frame,
-            text=customer.get("phone", "N/A"),
-            font=("Arial", 14),
-            text_color="#475569"
-        ).pack(side="left", expand=True, fill="x")
-        
-        ctk.CTkLabel(
-            row_frame,
-            text=customer.get("signup_date", "N/A"),
-            font=("Arial", 14),
-            text_color="#475569"
-        ).pack(side="left", expand=True, fill="x")
-        
-        if customer != self.reports_data["new_customers_list"][-1]:
-            ctk.CTkFrame(self.customer_list_frame, height=1, fg_color="#f1f5f9").pack(fill="x", padx=20)
 
     def auto_refresh(self):
         """Auto-refresh data at intervals"""
@@ -592,18 +369,18 @@ class HotelReportsPage(ctk.CTkFrame):
         self.growth_label.pack(anchor="w", padx=20, pady=(0, 20))
         
         # Total Customers Card
-        total_customers_card = ctk.CTkFrame(cards_frame, fg_color="white", corner_radius=12)
-        total_customers_card.grid(row=0, column=1, padx=(10, 0), pady=10, sticky="nsew")
+        self.total_customers_card = ctk.CTkFrame(cards_frame, fg_color="white", corner_radius=12)
+        self.total_customers_card.grid(row=0, column=1, padx=(10, 0), pady=10, sticky="nsew")
         
         ctk.CTkLabel(
-            total_customers_card,
+            self.total_customers_card,
             text="Total Customers",
             font=("Arial", 16, "bold"),
             text_color="#475569"
         ).pack(anchor="w", padx=20, pady=(20, 10))
         
         self.total_customers_label = ctk.CTkLabel(
-            total_customers_card,
+            self.total_customers_card,
             text="0",
             font=("Arial", 32, "bold"),
             text_color="#3b82f6"
@@ -611,7 +388,7 @@ class HotelReportsPage(ctk.CTkFrame):
         self.total_customers_label.pack(anchor="w", padx=20, pady=(0, 20))
         
         self.total_customers_canvas = ctk.CTkCanvas(
-            total_customers_card, 
+            self.total_customers_card, 
             height=150, 
             bg="white", 
             highlightthickness=0
@@ -646,27 +423,199 @@ class HotelReportsPage(ctk.CTkFrame):
         self.revenue_canvas = ctk.CTkCanvas(revenue_card, height=100, bg="white", highlightthickness=0)
         self.revenue_canvas.pack(fill="x", padx=20, pady=(10, 20))
         
-        # Bookings Card
-        bookings_card = ctk.CTkFrame(cards_frame_2, fg_color="white", corner_radius=12)
-        bookings_card.grid(row=0, column=1, padx=(10, 0), pady=10, sticky="nsew")
+        # Occupancy Card
+        occupancy_card = ctk.CTkFrame(cards_frame_2, fg_color="white", corner_radius=12)
+        occupancy_card.grid(row=0, column=1, padx=(10, 0), pady=10, sticky="nsew")
         
         ctk.CTkLabel(
-            bookings_card,
-            text="Monthly Bookings",
+            occupancy_card,
+            text="Occupancy Rate",
             font=("Arial", 16, "bold"),
             text_color="#475569"
         ).pack(anchor="w", padx=20, pady=(20, 10))
         
-        self.bookings_label = ctk.CTkLabel(
-            bookings_card,
-            text="0",
+        self.occupancy_label = ctk.CTkLabel(
+            occupancy_card,
+            text="0%",
             font=("Arial", 32, "bold"),
             text_color="#f59e0b"
         )
-        self.bookings_label.pack(anchor="w", padx=20, pady=(0, 20))
+        self.occupancy_label.pack(anchor="w", padx=20, pady=(0, 20))
         
-        self.bookings_canvas = ctk.CTkCanvas(bookings_card, height=100, bg="white", highlightthickness=0)
-        self.bookings_canvas.pack(fill="x", padx=20, pady=(10, 20))
+        self.occupancy_canvas = ctk.CTkCanvas(occupancy_card, height=100, bg="white", highlightthickness=0)
+        self.occupancy_canvas.pack(fill="x", padx=20, pady=(10, 20))
+
+    def draw_new_customers_chart(self):
+        """Draw the new customers bar chart"""
+        months = list(self.reports_data["new_customers"].keys())
+        if not months:
+            return
+            
+        data = self.reports_data["new_customers"]
+        max_value = max(data.values()) or 1
+        
+        for month in months:
+            bar_frame = ctk.CTkFrame(self.new_customers_card, fg_color="transparent")
+            bar_frame.is_bar = True
+            bar_frame.pack(fill="x", padx=20, pady=5)
+            
+            ctk.CTkLabel(
+                bar_frame,
+                text=month,
+                font=("Arial", 12),
+                text_color="#64748b",
+                width=30
+            ).pack(side="left", padx=(0, 10))
+            
+            bar_container = ctk.CTkFrame(bar_frame, height=10, fg_color="#e2e8f0", corner_radius=5)
+            bar_container.pack(side="left", fill="x", expand=True)
+            
+            width_percent = (data[month] / max_value) * 100
+            bar = ctk.CTkFrame(bar_container, height=10, fg_color="#3b82f6", corner_radius=5)
+            bar.place(relx=0, rely=0, relwidth=width_percent/100, relheight=1)
+
+    def draw_total_customers_chart(self):
+        """Draw the total customers line chart"""
+        months = list(self.reports_data["total_customers"].keys())
+        if not months:
+            return
+            
+        width = self.total_customers_canvas.winfo_width()
+        height = 150
+        padding = 30
+        
+        data = self.reports_data["total_customers"]
+        values = [data[month] for month in months]
+        min_value = min(values)
+        max_value = max(values)
+        value_range = max_value - min_value if max_value != min_value else 1
+        
+        points = []
+        for i, month in enumerate(months):
+            x = padding + (i * ((width - 2 * padding) / (len(months) - 1)))
+            y = height - padding - ((data[month] - min_value) / value_range) * (height - 2 * padding)
+            points.append((x, y))
+            
+            self.total_customers_canvas.create_text(
+                x, height - 10, 
+                text=month, 
+                fill="#64748b", 
+                font=("Arial", 10)
+            )
+        
+        for i in range(len(points) - 1):
+            self.total_customers_canvas.create_line(
+                points[i][0], points[i][1], 
+                points[i+1][0], points[i+1][1],
+                fill="#3b82f6", width=2
+            )
+            
+            self.total_customers_canvas.create_text(
+                points[i][0], points[i][1] - 15,
+                text=f"{values[i]:,}",
+                fill="#3b82f6",
+                font=("Arial", 8)
+            )
+        
+        self.total_customers_canvas.create_text(
+            points[-1][0], points[-1][1] - 15,
+            text=f"{values[-1]:,}",
+            fill="#3b82f6",
+            font=("Arial", 8)
+        )
+
+    def draw_revenue_chart(self):
+        """Draw the revenue bar chart"""
+        months = list(self.reports_data["revenue_data"].keys())
+        if not months:
+            return
+            
+        width = self.revenue_canvas.winfo_width()
+        height = 100
+        padding = 30
+        
+        data = self.reports_data["revenue_data"]
+        values = [data[month] for month in months]
+        max_value = max(values) or 1
+        
+        bar_width = width / len(months) * 0.6
+        spacing = width / len(months)
+        
+        for i, (month, value) in enumerate(zip(months, values)):
+            x = padding + (i * spacing)
+            bar_height = (value / max_value) * (height - 2 * padding - 20)
+            
+            self.revenue_canvas.create_rectangle(
+                x, height - padding - bar_height,
+                x + bar_width, height - padding,
+                fill="#10b981", outline=""
+            )
+            
+            self.revenue_canvas.create_text(
+                x + bar_width/2, height - padding - bar_height - 10,
+                text=f"${value/1000:.1f}k" if value >= 1000 else f"${value:.0f}",
+                fill="#10b981", font=("Arial", 8)
+            )
+            
+            self.revenue_canvas.create_text(
+                x + bar_width/2, height - 10,
+                text=month, fill="#64748b", font=("Arial", 10)
+            )
+
+    def draw_occupancy_chart(self):
+        """Draw the occupancy line chart"""
+        months = list(self.reports_data["occupancy_data"].keys())
+        if not months:
+            return
+            
+        width = self.occupancy_canvas.winfo_width()
+        height = 100
+        padding = 30
+        
+        data = self.reports_data["occupancy_data"]
+        values = [data[month] for month in months]
+        
+        points = []
+        for i, (month, value) in enumerate(zip(months, values)):
+            x = padding + (i * ((width - 2 * padding) / (len(months) - 1)))
+            y = height - padding - (value / 100) * (height - 2 * padding - 20)
+            points.append((x, y))
+            
+            self.occupancy_canvas.create_text(
+                x, height - 10,
+                text=month, fill="#64748b", font=("Arial", 10)
+            )
+        
+        for i in range(len(points) - 1):
+            self.occupancy_canvas.create_line(
+                points[i][0], points[i][1], 
+                points[i+1][0], points[i+1][1],
+                fill="#f59e0b", width=2
+            )
+            
+            self.occupancy_canvas.create_oval(
+                points[i][0] - 3, points[i][1] - 3,
+                points[i][0] + 3, points[i][1] + 3,
+                fill="#f59e0b", outline=""
+            )
+            self.occupancy_canvas.create_text(
+                points[i][0], points[i][1] - 15,
+                text=f"{values[i]}%",
+                fill="#f59e0b",
+                font=("Arial", 8)
+            )
+        
+        self.occupancy_canvas.create_oval(
+            points[-1][0] - 3, points[-1][1] - 3,
+            points[-1][0] + 3, points[-1][1] + 3,
+            fill="#f59e0b", outline=""
+        )
+        self.occupancy_canvas.create_text(
+            points[-1][0], points[-1][1] - 15,
+            text=f"{values[-1]}%",
+            fill="#f59e0b",
+            font=("Arial", 8)
+        )
 
     def create_customer_list(self, parent):
         """Create the recent customers list"""
@@ -700,145 +649,56 @@ class HotelReportsPage(ctk.CTkFrame):
         for customer in self.reports_data["new_customers_list"]:
             self.add_customer_row(customer)
 
-    def generate_report(self):
-        """Generate a comprehensive PDF report and save to user's device"""
-        try:
-            # Ask user where to save the report
-            initial_dir = os.path.expanduser("~/Documents")
-            if not os.path.exists(initial_dir):
-                initial_dir = os.path.expanduser("~")
-                
-            file_path = filedialog.asksaveasfilename(
-                initialdir=initial_dir,
-                title="Save Report As",
-                defaultextension=".pdf",
-                filetypes=[("PDF Files", "*.pdf"), ("All Files", "*.*")]
-            )
-            
-            if not file_path:  # User cancelled
-                return
-                
-            # Create PDF report
-            self._create_pdf_report(file_path)
-            
-            messagebox.showinfo(
-                "Report Generated", 
-                f"Report successfully saved to:\n{file_path}"
-            )
-        except Exception as e:
-            messagebox.showerror(
-                "Report Generation Failed", 
-                f"Error generating report: {str(e)}"
-            )
+    def add_customer_row(self, customer):
+        """Add a row to the customer list"""
+        row_frame = ctk.CTkFrame(self.customer_list_frame, fg_color="transparent")
+        row_frame.pack(fill="x", padx=20, pady=10)
+        
+        ctk.CTkLabel(
+            row_frame,
+            text=customer.get("name", "N/A"),
+            font=("Arial", 14),
+            text_color="#475569"
+        ).pack(side="left", expand=True, fill="x")
+        
+        ctk.CTkLabel(
+            row_frame,
+            text=customer.get("email", "N/A"),
+            font=("Arial", 14),
+            text_color="#475569"
+        ).pack(side="left", expand=True, fill="x")
+        
+        ctk.CTkLabel(
+            row_frame,
+            text=customer.get("phone", "N/A"),
+            font=("Arial", 14),
+            text_color="#475569"
+        ).pack(side="left", expand=True, fill="x")
+        
+        ctk.CTkLabel(
+            row_frame,
+            text=customer.get("signup_date", "N/A"),
+            font=("Arial", 14),
+            text_color="#475569"
+        ).pack(side="left", expand=True, fill="x")
+        
+        if customer != self.reports_data["new_customers_list"][-1]:
+            ctk.CTkFrame(self.customer_list_frame, height=1, fg_color="#f1f5f9").pack(fill="x", padx=20)
 
-    def _create_pdf_report(self, file_path):
-        """Helper method to create PDF report"""
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", size=12)
-        
-        # Add title
-        pdf.cell(200, 10, txt="Hotel Performance Report", ln=1, align='C')
-        pdf.ln(10)
-        
-        # Add date
-        pdf.cell(200, 10, txt=f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M')}", ln=1)
-        pdf.ln(10)
-        
-        # Add summary statistics
-        pdf.set_font("Arial", 'B', 12)
-        pdf.cell(200, 10, txt="Summary Statistics", ln=1)
-        pdf.set_font("Arial", size=10)
-        
-        stats = [
-            ("Total Customers", self.reports_data["total_customers"].get(list(self.reports_data["total_customers"].keys())[-1], 0)),
-            ("Total Revenue", f"${sum(self.reports_data['revenue_data'].values()):,.2f}"),
-            ("Total Bookings", sum(self.reports_data["booking_data"].values())),
-            ("New Customers (Last Month)", self.reports_data["new_customers"].get(list(self.reports_data["new_customers"].keys())[-1], 0))
-        ]
-        
-        for label, value in stats:
-            pdf.cell(100, 8, txt=f"{label}:", ln=0)
-            pdf.cell(90, 8, txt=str(value), ln=1)
-        
-        # Add monthly data table
-        pdf.ln(10)
-        pdf.set_font("Arial", 'B', 12)
-        pdf.cell(200, 10, txt="Monthly Performance Data", ln=1)
-        pdf.set_font("Arial", size=10)
-        
-        # Table header
-        pdf.set_fill_color(200, 220, 255)
-        pdf.cell(40, 8, "Month", 1, 0, 'C', 1)
-        pdf.cell(30, 8, "New Customers", 1, 0, 'C', 1)
-        pdf.cell(30, 8, "Total Customers", 1, 0, 'C', 1)
-        pdf.cell(30, 8, "Revenue", 1, 0, 'C', 1)
-        pdf.cell(30, 8, "Bookings", 1, 1, 'C', 1)
-        
-        # Table rows
-        pdf.set_fill_color(255, 255, 255)
-        months = list(self.reports_data["new_customers"].keys())
-        for month in months:
-            pdf.cell(40, 8, month, 1)
-            pdf.cell(30, 8, str(self.reports_data["new_customers"][month]), 1, 0, 'R')
-            pdf.cell(30, 8, str(self.reports_data["total_customers"][month]), 1, 0, 'R')
-            pdf.cell(30, 8, f"${self.reports_data['revenue_data'][month]:,.2f}", 1, 0, 'R')
-            pdf.cell(30, 8, str(self.reports_data["booking_data"][month]), 1, 1, 'R')
-        
-        # Add recent customers
-        pdf.ln(10)
-        pdf.set_font("Arial", 'B', 12)
-        pdf.cell(200, 10, txt="Recent Customers", ln=1)
-        pdf.set_font("Arial", size=10)
-        
-        # Table header
-        pdf.set_fill_color(200, 220, 255)
-        pdf.cell(60, 8, "Name", 1, 0, 'C', 1)
-        pdf.cell(70, 8, "Email", 1, 0, 'C', 1)
-        pdf.cell(30, 8, "Phone", 1, 0, 'C', 1)
-        pdf.cell(30, 8, "Sign-up Date", 1, 1, 'C', 1)
-        
-        # Table rows
-        pdf.set_fill_color(255, 255, 255)
-        for customer in self.reports_data["new_customers_list"]:
-            pdf.cell(60, 8, customer.get("name", "N/A"), 1)
-            pdf.cell(70, 8, customer.get("email", "N/A"), 1)
-            pdf.cell(30, 8, customer.get("phone", "N/A"), 1)
-            pdf.cell(30, 8, customer.get("signup_date", "N/A"), 1, 1)
-        
-        pdf.output(file_path)
+    def generate_report(self):
+        """Generate a report dialog"""
+        messagebox.showinfo("Generate Report", "Report generation would open a dialog with options")
 
     def export_data(self):
-        """Export data to CSV file on user's device"""
+        """Export data to CSV"""
         try:
-            # Set default save location
-            initial_dir = os.path.expanduser("~/Documents")
-            if not os.path.exists(initial_dir):
-                initial_dir = os.path.expanduser("~")
-                
-            # Get current timestamp for filename
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            default_name = f"hotel_report_{timestamp}.csv"
+            filename = f"hotel_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
             
-            # Ask user where to save
-            file_path = filedialog.asksaveasfilename(
-                initialdir=initial_dir,
-                initialfile=default_name,
-                title="Save Data As",
-                defaultextension=".csv",
-                filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")]
-            )
-            
-            if not file_path:  # User cancelled
-                return
-                
-            # Write data to CSV
-            with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
+            with open(filename, 'w', newline='') as csvfile:
                 writer = csv.writer(csvfile)
                 
-                # Write header
-                writer.writerow(['Month', 'New Customers', 'Total Customers', 
-                               'Revenue ($)', 'Bookings'])
+                # Write metrics header
+                writer.writerow(['Month', 'New Customers', 'Total Customers', 'Revenue', 'Occupancy Rate'])
                 
                 # Write metrics data
                 months = list(self.reports_data["new_customers"].keys())
@@ -847,20 +707,13 @@ class HotelReportsPage(ctk.CTkFrame):
                         month,
                         self.reports_data["new_customers"].get(month, 0),
                         self.reports_data["total_customers"].get(month, 0),
-                        self.reports_data["revenue_data"].get(month, 0),
-                        self.reports_data["booking_data"].get(month, 0)
+                        f"${self.reports_data['revenue_data'].get(month, 0):.2f}",
+                        f"{self.reports_data['occupancy_data'].get(month, 0)}%"
                     ])
-                
-                # Write summary section
-                writer.writerow([])
-                writer.writerow(['SUMMARY STATISTICS'])
-                writer.writerow(['Total Customers', sum(self.reports_data["new_customers"].values())])
-                writer.writerow(['Total Revenue', f"${sum(self.reports_data['revenue_data'].values()):,.2f}"])
-                writer.writerow(['Total Bookings', sum(self.reports_data["booking_data"].values())])
                 
                 # Write recent customers
                 writer.writerow([])
-                writer.writerow(['RECENT CUSTOMERS'])
+                writer.writerow(['Recent Customers'])
                 writer.writerow(['Name', 'Email', 'Phone', 'Sign-up Date'])
                 for customer in self.reports_data["new_customers_list"]:
                     writer.writerow([
@@ -870,12 +723,6 @@ class HotelReportsPage(ctk.CTkFrame):
                         customer.get('signup_date', '')
                     ])
             
-            messagebox.showinfo(
-                "Export Successful", 
-                f"Data successfully exported to:\n{file_path}"
-            )
+            messagebox.showinfo("Export Successful", f"Data exported to {filename}")
         except Exception as e:
-            messagebox.showerror(
-                "Export Failed", 
-                f"Error exporting data: {str(e)}"
-            )
+            messagebox.showerror("Export Failed", f"Error exporting data: {str(e)}")

@@ -16,7 +16,7 @@ class LoginApp(ctk.CTkFrame):
 
         # Background Image
         try:
-            bg_image = Image.open("login_bg.jpg")
+            bg_image = Image.open("Welcome.jpg")
             bg_image = bg_image.resize((1920, 1080), Image.LANCZOS)
             blurred_bg_image = bg_image.filter(ImageFilter.GaussianBlur(radius=5))
             self.bg_photo = ImageTk.PhotoImage(blurred_bg_image)
@@ -109,7 +109,7 @@ class LoginApp(ctk.CTkFrame):
                                                text_color="#3b82f6",
                                                cursor="hand2")
         self.forgot_password_link.pack()
-        self.forgot_password_link.bind("<Button-1>", lambda e: print("Password recovery clicked"))
+        self.forgot_password_link.bind("<Button-1>", lambda e: self.controller.show_frame("PasswordRecoveryApp"))
 
         self.register_link = ctk.CTkLabel(links_frame, 
                                         text="Don't have an account? Register", 

@@ -1,11 +1,13 @@
 import customtkinter as ctk
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from db_helper import DatabaseManager
 
 class HotelBookingDashboard(ctk.CTkFrame):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
+        self.db = DatabaseManager()
         
         # Configure grid layout
         self.grid_rowconfigure(0, weight=1)
@@ -161,11 +163,17 @@ class HotelBookingDashboard(ctk.CTkFrame):
         metrics_frame = ctk.CTkFrame(content, fg_color="transparent")
         metrics_frame.pack(fill="x", padx=20, pady=20)
         
+        # Get dynamic data from database
+        total_bookings_cost = self.db.get_total_bookings_cost()
+        active_customers = self.db.get_active_customers_count()
+        total_reservations = self.db.get_total_reservations()
+        # total_revenue = total_bookings_cost  # Using same as bookings cost for this example
+        
         metrics = [
-            ("$8,512", "Total bookings cost"),
-            ("1,200", "Active customers"),
-            ("4,000", "Total reservations"),
-            ("6,000", "Total revenue")
+            (f"${total_bookings_cost:,.2f}", "Total bookings cost"),
+            (f"{active_customers:,}", "Active customers"),
+            (f"{total_reservations:,}", "Total reservations"),
+            # (f"${total_revenue:,.2f}", "Total revenue")
         ]
         
         for value, label in metrics:

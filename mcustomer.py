@@ -1,20 +1,13 @@
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import messagebox
+from db_helper import DatabaseManager
 
 class CustomerManagementScreen(ctk.CTkFrame):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
-        
-        # Initialize customers list before creating UI
-        self.customers = [
-            ("#12345", "Jack Smith", "jack.smith@gmail.com", "123 Main St, San Francisco", "(123) 456-7890", "Active"),
-            ("#12346", "Emily Johnson", "emily.johnson@gmail.com", "456 Elm St, Los Angeles", "(234) 567-8901", "Active"),
-            ("#12347", "Michael Williams", "michael.williams@gmail.com", "789 Oak St, New York", "(345) 678-9012", "Inactive"),
-            ("#12348", "Sophia Brown", "sophia.brown@gmail.com", "234 Pine St, Chicago", "(456) 789-0123", "Active"),
-            ("#12349", "Liam Davis", "liam.davis@gmail.com", "567 Cedar St, Miami", "(567) 890-1234", "Inactive")
-        ]
+        self.db = DatabaseManager()
         
         # Configure grid layout
         self.grid_rowconfigure(0, weight=1)
@@ -23,6 +16,9 @@ class CustomerManagementScreen(ctk.CTkFrame):
         # Create components
         self.create_sidebar()
         self.create_main_content()
+        
+        # Load initial data
+        self.filter_customers("all")
     
     def create_sidebar(self):
         sidebar = ctk.CTkFrame(self, width=250, fg_color="#f0f9ff", corner_radius=0)
@@ -153,9 +149,33 @@ class CustomerManagementScreen(ctk.CTkFrame):
         content.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
         content.grid_columnconfigure(0, weight=1)
         
+        # Search and filter section
+        search_filter_frame = ctk.CTkFrame(content, fg_color="transparent")
+        search_filter_frame.grid(row=0, column=0, sticky="ew", pady=(0, 20))
+        search_filter_frame.grid_columnconfigure(0, weight=1)
+        search_filter_frame.grid_columnconfigure(1, weight=0)
+        
+        # Search entry
+        self.search_entry = ctk.CTkEntry(
+            search_filter_frame,
+            placeholder_text="Search customers...",
+            width=300
+        )
+        self.search_entry.grid(row=0, column=0, sticky="w")
+        self.search_entry.bind("<KeyRelease>", self.search_customers)
+        
+        # Add customer button
+        ctk.CTkButton(
+            search_filter_frame,
+            text="+ Add Customer",
+            fg_color="#3b82f6",
+            command=self.open_add_customer_dialog,
+            width=120
+        ).grid(row=0, column=1, padx=(10, 0))
+        
         # Filter buttons
         filter_frame = ctk.CTkFrame(content, fg_color="transparent")
-        filter_frame.grid(row=0, column=0, sticky="w", pady=(0, 20))
+        filter_frame.grid(row=1, column=0, sticky="w", pady=(0, 20))
         
         self.active_filter = tk.StringVar(value="all")
         
@@ -191,7 +211,7 @@ class CustomerManagementScreen(ctk.CTkFrame):
         
         # Customer table
         self.table_frame = ctk.CTkFrame(content, fg_color="white", corner_radius=10)
-        self.table_frame.grid(row=1, column=0, sticky="nsew", pady=(0, 20))
+        self.table_frame.grid(row=2, column=0, sticky="nsew", pady=(0, 20))
         
         # Table headers
         headers = ["ID", "Name", "Email", "Address", "Phone", "Status", "Actions"]
@@ -213,23 +233,32 @@ class CustomerManagementScreen(ctk.CTkFrame):
         # Table content frame
         self.table_content = ctk.CTkFrame(self.table_frame, fg_color="white")
         self.table_content.pack(fill="both", expand=True, padx=15, pady=10)
-        
-        # Populate table initially
-        self.populate_table(self.customers)
     
     def populate_table(self, customers):
+        """Populate the table with customer data"""
         # Clear existing rows
         for widget in self.table_content.winfo_children():
             widget.destroy()
+        
+        if not customers:
+            # Show message if no customers found
+            ctk.CTkLabel(
+                self.table_content,
+                text="No customers found",
+                text_color="#64748b",
+                font=("Arial", 12)
+            ).pack(pady=20)
+            return
         
         # Add customer rows
         for row, customer in enumerate(customers):
             row_frame = ctk.CTkFrame(self.table_content, fg_color="white")
             row_frame.pack(fill="x", pady=5)
             
-            for col in range(6):  # For each data column
-                value = customer[col]
-                if col == 5:  # Status column
+            # Display customer data
+            for col, field in enumerate(["customer_id", "full_name", "email", "address", "phone", "status"]):
+                value = customer[field]
+                if field == "status":  # Status column
                     status_frame = ctk.CTkFrame(
                         row_frame,
                         fg_color="#10b981" if value == "Active" else "#ef4444",
@@ -285,33 +314,24 @@ class CustomerManagementScreen(ctk.CTkFrame):
             delete_btn.pack(side="left", padx=2)
     
     def filter_customers(self, status):
+        """Filter customers by status"""
         self.active_filter.set(status)
-        
-        if status == "all":
-            filtered = self.customers
-        else:
-            filtered = [c for c in self.customers if c[5].lower() == status]
-        
-        self.populate_table(filtered)
+        customers = self.db.get_customers(status)
+        self.populate_table(customers)
     
     def search_customers(self, event):
-        query = event.widget.get().lower()
+        """Search customers based on input"""
+        query = self.search_entry.get().strip()
         
         if not query:
             self.filter_customers(self.active_filter.get())
             return
         
-        filtered = [
-            c for c in self.customers 
-            if query in c[1].lower() or  # Name
-               query in c[2].lower() or  # Email
-               query in c[3].lower() or  # Address
-               query in c[4].lower()    # Phone
-        ]
-        
-        self.populate_table(filtered)
+        customers = self.db.search_customers(query)
+        self.populate_table(customers)
     
     def open_add_customer_dialog(self):
+        """Open dialog to add new customer"""
         dialog = ctk.CTkToplevel(self)
         dialog.title("Add New Customer")
         dialog.geometry("500x500")
@@ -319,76 +339,42 @@ class CustomerManagementScreen(ctk.CTkFrame):
         
         # Form fields
         fields = [
-            ("ID Number", "text"),
-            ("Name", "text"),
-            ("Email", "text"),
-            ("Address", "text"),
-            ("Contact Number", "text"),
-            ("Status", "combobox")
+            ("ID Number", "text", ""),
+            ("Name", "text", ""),
+            ("Email", "text", ""),
+            ("Address", "text", ""),
+            ("Contact Number", "text", ""),
+            ("Status", "combobox", "Active")
         ]
         
-        entries = {}
-        
-        for i, (label, field_type) in enumerate(fields):
-            frame = ctk.CTkFrame(dialog, fg_color="transparent")
-            frame.pack(fill="x", padx=20, pady=10)
-            
-            ctk.CTkLabel(frame, text=label).pack(anchor="w")
-            
-            if field_type == "text":
-                entry = ctk.CTkEntry(frame)
-                entry.pack(fill="x")
-                entries[label] = entry
-            elif field_type == "combobox":
-                combo = ctk.CTkComboBox(frame, values=["Active", "Inactive"])
-                combo.pack(fill="x")
-                entries[label] = combo
-        
-        # Submit button
-        submit_btn = ctk.CTkButton(
-            dialog,
-            text="Add Customer",
-            command=lambda: self.add_customer(entries, dialog)
-        )
-        submit_btn.pack(pady=20)
-    
-    def add_customer(self, entries, dialog):
-        new_customer = (
-            entries["ID Number"].get(),
-            entries["Name"].get(),
-            entries["Email"].get(),
-            entries["Address"].get(),
-            entries["Contact Number"].get(),
-            entries["Status"].get()
-        )
-        
-        if all(new_customer):
-            self.customers.append(new_customer)
-            self.filter_customers(self.active_filter.get())
-            dialog.destroy()
-            messagebox.showinfo("Success", "Customer added successfully!")
-        else:
-            messagebox.showerror("Error", "Please fill in all fields")
+        self.setup_customer_form(dialog, fields, self.add_customer, "Add Customer")
     
     def edit_customer(self, customer):
+        """Open dialog to edit existing customer"""
         dialog = ctk.CTkToplevel(self)
         dialog.title("Edit Customer")
-        dialog.geometry("600x600")
+        dialog.geometry("500x500")
         dialog.grab_set()
         
         # Form fields with existing data
         fields = [
-            ("ID Number", "text", customer[0]),
-            ("Name", "text", customer[1]),
-            ("Email", "text", customer[2]),
-            ("Address", "text", customer[3]),
-            ("Contact Number", "text", customer[4]),
-            ("Status", "combobox", customer[5])
+            ("ID Number", "text", customer['customer_id']),
+            ("Name", "text", customer['full_name']),
+            ("Email", "text", customer['email']),
+            ("Address", "text", customer['address']),
+            ("Contact Number", "text", customer['phone']),
+            ("Status", "combobox", customer['status'])
         ]
         
+        self.setup_customer_form(dialog, fields, 
+                               lambda entries, dlg: self.update_customer(customer['customer_id'], entries, dlg), 
+                               "Update Customer")
+    
+    def setup_customer_form(self, dialog, fields, submit_action, submit_text):
+        """Helper method to setup customer form"""
         entries = {}
         
-        for i, (label, field_type, value) in enumerate(fields):
+        for label, field_type, default_value in fields:
             frame = ctk.CTkFrame(dialog, fg_color="transparent")
             frame.pack(fill="x", padx=20, pady=10)
             
@@ -396,44 +382,77 @@ class CustomerManagementScreen(ctk.CTkFrame):
             
             if field_type == "text":
                 entry = ctk.CTkEntry(frame)
-                entry.insert(0, value)
+                if default_value:
+                    entry.insert(0, default_value)
                 entry.pack(fill="x")
                 entries[label] = entry
             elif field_type == "combobox":
                 combo = ctk.CTkComboBox(frame, values=["Active", "Inactive"])
-                combo.set(value)
+                combo.set(default_value)
                 combo.pack(fill="x")
                 entries[label] = combo
         
         # Submit button
         submit_btn = ctk.CTkButton(
             dialog,
-            text="Update Customer",
-            command=lambda: self.update_customer(customer, entries, dialog)
+            text=submit_text,
+            command=lambda: submit_action(entries, dialog)
         )
         submit_btn.pack(pady=20)
     
-    def update_customer(self, old_customer, entries, dialog):
-        updated_customer = (
-            entries["ID Number"].get(),
-            entries["Name"].get(),
-            entries["Email"].get(),
-            entries["Address"].get(),
-            entries["Contact Number"].get(),
-            entries["Status"].get()
-        )
+    def add_customer(self, entries, dialog):
+        """Add new customer to database"""
+        customer_data = {
+            'customer_id': entries["ID Number"].get(),
+            'full_name': entries["Name"].get(),
+            'email': entries["Email"].get(),
+            'address': entries["Address"].get(),
+            'phone': entries["Contact Number"].get(),
+            'status': entries["Status"].get()
+        }
         
-        if all(updated_customer):
-            index = self.customers.index(old_customer)
-            self.customers[index] = updated_customer
+        if not all(customer_data.values()):
+            messagebox.showerror("Error", "Please fill in all fields")
+            return
+        
+        if self.db.add_customer(customer_data):
+            messagebox.showinfo("Success", "Customer added successfully!")
             self.filter_customers(self.active_filter.get())
             dialog.destroy()
-            messagebox.showinfo("Success", "Customer updated successfully!")
         else:
+            messagebox.showerror("Error", "Failed to add customer")
+    
+    def update_customer(self, customer_id, entries, dialog):
+        """Update existing customer in database"""
+        updated_data = {
+            'full_name': entries["Name"].get(),
+            'email': entries["Email"].get(),
+            'address': entries["Address"].get(),
+            'phone': entries["Contact Number"].get(),
+            'status': entries["Status"].get()
+        }
+        
+        if not all(updated_data.values()):
             messagebox.showerror("Error", "Please fill in all fields")
+            return
+        
+        if self.db.update_customer(customer_id, updated_data):
+            messagebox.showinfo("Success", "Customer updated successfully!")
+            self.filter_customers(self.active_filter.get())
+            dialog.destroy()
+        else:
+            messagebox.showerror("Error", "Failed to update customer")
     
     def delete_customer(self, customer):
-        if messagebox.askyesno("Confirm", "Delete this customer?"):
-            self.customers.remove(customer)
-            self.filter_customers(self.active_filter.get())
-            messagebox.showinfo("Success", "Customer deleted")
+        """Delete customer from database"""
+        if messagebox.askyesno("Confirm", f"Delete customer {customer['full_name']}?"):
+            if self.db.delete_customer(customer['customer_id']):
+                messagebox.showinfo("Success", "Customer deleted")
+                self.filter_customers(self.active_filter.get())
+            else:
+                messagebox.showerror("Error", "Failed to delete customer")
+    
+    def __del__(self):
+        """Clean up database connection when frame is destroyed"""
+        if hasattr(self, 'db'):
+            self.db.close()

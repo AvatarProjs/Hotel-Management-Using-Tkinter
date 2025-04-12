@@ -1,8 +1,7 @@
 import customtkinter as ctk
-import json
-import os
 from tkinter import messagebox
 from datetime import datetime
+from db_helper import DatabaseManager
 
 class HotelReservationsPage(ctk.CTkFrame):
     def __init__(self, parent, controller):
@@ -11,7 +10,10 @@ class HotelReservationsPage(ctk.CTkFrame):
         
         # Initialize data
         self.reservations = []
-        self.load_data()
+        self.selected_row = None
+        self.selected_reservation_id = None
+        self.sort_column = None
+        self.sort_descending = False
         
         # Configure grid layout
         self.grid_rowconfigure(0, weight=1)
@@ -20,39 +22,120 @@ class HotelReservationsPage(ctk.CTkFrame):
         # Create components
         self.create_sidebar()
         self.create_main_content()
-    
+        
+        # Bind to frame activation
+        self.bind("<Visibility>", lambda e: self.load_data())
+
     def load_data(self):
-        """Load reservations data from JSON file"""
+        """Load reservations data from database"""
         try:
-            if os.path.exists("reservations.json"):
-                with open("reservations.json", "r") as f:
-                    self.reservations = json.load(f)
-            else:
-                # Default data if file doesn't exist
-                self.reservations = [
-                    {"id": "#12345", "name": "Jack Smith", "checkin": "Jun 23, 2024", "amount": "$450.00"},
-                    {"id": "#12346", "name": "Emily Johnson", "checkin": "Jun 22, 2024", "amount": "$500.00"},
-                    {"id": "#12347", "name": "Michael Williams", "checkin": "Jun 21, 2024", "amount": "$400.00"},
-                    {"id": "#12348", "name": "Sophia Brown", "checkin": "Jun 20, 2024", "amount": "$850.00"},
-                    {"id": "#12349", "name": "Liam Davis", "checkin": "Jun 19, 2024", "amount": "$600.00"},
-                    {"id": "#12350", "name": "Tim Cook", "checkin": "Jun 18, 2024", "amount": "$350.00"},
-                    {"id": "#12351", "name": "Mark Zuckerberg", "checkin": "Jun 17, 2024", "amount": "$650.00"},
-                    {"id": "#12352", "name": "Jack Dorsey", "checkin": "Jun 16, 2024", "amount": "$700.00"},
-                    {"id": "#12353", "name": "Reed Hastings", "checkin": "Jun 15, 2024", "amount": "$300.00"},
-                    {"id": "#12354", "name": "Brian Chesky", "checkin": "Jun 14, 2024", "amount": "$750.00"}
-                ]
-                self.save_data()
+            # Check if user is logged in
+            if not hasattr(self.controller, 'current_user') or self.controller.current_user is None:
+                messagebox.showerror("Error", "User not logged in")
+                self.controller.show_frame("LoginApp")
+                return
+                
+            # Ensure database connection
+            if not hasattr(self.controller, 'db'):
+                self.controller.db = DatabaseManager()
+                
+            if not self.controller.db.connection.is_connected():
+                self.controller.db.connect()
+                
+            with self.controller.db.connection.cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT 
+                        reservation_id as id,
+                        guest_name as name,
+                        DATE_FORMAT(checkin_date, '%b %d, %Y') as checkin,
+                        CONCAT('$', FORMAT(booking_amount, 2)) as amount
+                    FROM reservations
+                    WHERE user_id = %s
+                    ORDER BY checkin_date DESC
+                """, (self.controller.current_user['user_id'],))
+                self.reservations = cursor.fetchall()
+                
+            # Update the UI with the loaded data
+            self.display_reservations()
+            
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load data: {str(e)}")
-    
-    def save_data(self):
-        """Save reservations data to JSON file"""
+            self.reservations = []
+            self.display_reservations()
+
+    def save_data(self, reservation_data=None, delete_id=None):
+        """Save or delete reservation data in database"""
         try:
-            with open("reservations.json", "w") as f:
-                json.dump(self.reservations, f, indent=2)
+            # Check if user is logged in
+            if not hasattr(self.controller, 'current_user') or self.controller.current_user is None:
+                messagebox.showerror("Error", "User not logged in")
+                self.controller.show_frame("LoginApp")
+                return False
+                
+            # Ensure database connection
+            if not hasattr(self.controller, 'db') or not self.controller.db.connection.is_connected():
+                self.controller.db = DatabaseManager()
+                self.controller.db.connect()
+
+            with self.controller.db.connection.cursor() as cursor:
+                if reservation_data and 'id' in reservation_data:
+                    # Parse the date string into a datetime object first
+                    try:
+                        checkin_date = datetime.strptime(reservation_data['checkin'], "%b %d, %Y").date()
+                        amount = float(reservation_data['amount'].replace('$', '').replace(',', ''))
+                    except ValueError as e:
+                        messagebox.showerror("Error", f"Invalid format: {str(e)}")
+                        return False
+                    
+                    # Update existing reservation
+                    if any(r['id'] == reservation_data['id'] for r in self.reservations):
+                        cursor.execute("""
+                            UPDATE reservations 
+                            SET guest_name = %s, 
+                                checkin_date = %s, 
+                                booking_amount = %s
+                            WHERE reservation_id = %s AND user_id = %s
+                        """, (
+                            reservation_data['name'],
+                            checkin_date,
+                            amount,
+                            reservation_data['id'],
+                            self.controller.current_user['user_id']
+                        ))
+                    else:
+                        # Insert new reservation
+                        cursor.execute("""
+                            INSERT INTO reservations 
+                            (reservation_id, user_id, guest_name, checkin_date, booking_amount)
+                            VALUES (%s, %s, %s, %s, %s)
+                        """, (
+                            reservation_data['id'],
+                            self.controller.current_user['user_id'],
+                            reservation_data['name'],
+                            checkin_date,
+                            amount
+                        ))
+                elif delete_id:
+                    # Delete reservation
+                    cursor.execute("""
+                        DELETE FROM reservations 
+                        WHERE reservation_id = %s AND user_id = %s
+                    """, (delete_id, self.controller.current_user['user_id']))
+                
+                self.controller.db.connection.commit()
+                self.load_data()  # Refresh data after changes
+                return True
+                
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to save data: {str(e)}")
-    
+            messagebox.showerror("Error", f"Database operation failed: {str(e)}")
+            if "MySQL Connection not available" in str(e):
+                try:
+                    self.controller.db.connect()
+                    return self.save_data(reservation_data, delete_id)
+                except:
+                    pass
+            return False
+
     def create_sidebar(self):
         """Create the sidebar navigation"""
         sidebar = ctk.CTkFrame(self, width=250, fg_color="#f0f9ff", corner_radius=0)
@@ -109,9 +192,14 @@ class HotelReservationsPage(ctk.CTkFrame):
             text="Logout",
             fg_color="#ef4444",
             hover_color="#dc2626",
-            command=lambda: self.controller.show_frame("LoginApp")
+            command=self.logout
         ).pack(fill="x")
-    
+
+    def logout(self):
+        """Handle user logout"""
+        self.controller.current_user = None
+        self.controller.show_frame("LoginApp")
+
     def create_main_content(self):
         """Create the main content area with reservations table"""
         # Main container
@@ -120,19 +208,17 @@ class HotelReservationsPage(ctk.CTkFrame):
         main.grid_rowconfigure(1, weight=1)
         main.grid_columnconfigure(0, weight=1)
         
-        # ===== HEADER SECTION =====
+        # Header section
         header_frame = ctk.CTkFrame(main, height=70, fg_color="white", corner_radius=0)
         header_frame.grid(row=0, column=0, sticky="ew", padx=0, pady=0)
-        
-        # Create header with evenly spaced items
-        header_frame.grid_columnconfigure(0, weight=0)  # Logo
-        header_frame.grid_columnconfigure(1, weight=1)  # Nav Items (centered)
-        header_frame.grid_columnconfigure(2, weight=0)  # Icons
+        header_frame.grid_columnconfigure(0, weight=0)
+        header_frame.grid_columnconfigure(1, weight=1)
+        header_frame.grid_columnconfigure(2, weight=0)
         
         # Logo
         logo_label = ctk.CTkLabel(
             header_frame, 
-            text="Hotel Booking and Management System", 
+            text="Hotel Booking System", 
             font=("Arial", 16, "bold"), 
             text_color="#2c3e50"
         )
@@ -168,7 +254,6 @@ class HotelReservationsPage(ctk.CTkFrame):
         icons_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
         icons_frame.grid(row=0, column=2, padx=20, sticky="e")
         
-        # Search, notification and profile icons
         search_icon = ctk.CTkLabel(icons_frame, text="🔍", font=("Arial", 20))
         search_icon.pack(side="left", padx=10)
         
@@ -178,24 +263,29 @@ class HotelReservationsPage(ctk.CTkFrame):
         profile_icon = ctk.CTkLabel(icons_frame, text="👤", font=("Arial", 20))
         profile_icon.pack(side="left", padx=10)
         
-        # ===== SCROLLABLE CONTENT AREA =====
-        # Create a canvas for scrolling
+        if hasattr(self.controller, 'current_user') and self.controller.current_user:
+            username = self.controller.current_user.get('full_name', '').split()[0]
+            if username:
+                ctk.CTkLabel(
+                    icons_frame, 
+                    text=username,
+                    font=("Arial", 14),
+                    text_color="#64748b"
+                ).pack(side="left", padx=5)
+        
+        # Scrollable content area
         canvas_frame = ctk.CTkFrame(main, fg_color="#f8fafc")
         canvas_frame.grid(row=1, column=0, sticky="nsew")
         canvas_frame.grid_rowconfigure(0, weight=1)
         canvas_frame.grid_columnconfigure(0, weight=1)
         
-        # Create canvas and scrollbar
         canvas = ctk.CTkCanvas(canvas_frame, bg="#f8fafc", highlightthickness=0)
         scrollbar = ctk.CTkScrollbar(canvas_frame, orientation="vertical", command=canvas.yview)
         canvas.configure(yscrollcommand=scrollbar.set)
         
-        # Place canvas and scrollbar
         scrollbar.grid(row=0, column=1, sticky="ns")
         canvas.grid(row=0, column=0, sticky="nsew")
-        canvas_frame.grid_columnconfigure(0, weight=1)
         
-        # Create frame inside canvas to hold content
         content = ctk.CTkFrame(canvas, fg_color="#f8fafc")
         canvas_window = canvas.create_window((0, 0), window=content, anchor="nw")
         
@@ -210,11 +300,10 @@ class HotelReservationsPage(ctk.CTkFrame):
             text_color="#2c3e50"
         ).pack(side="left")
         
-        # Action buttons frame (New, Edit, Delete)
+        # Action buttons
         action_frame = ctk.CTkFrame(title_frame, fg_color="transparent")
         action_frame.pack(side="right")
         
-        # New Reservation button
         new_btn = ctk.CTkButton(
             action_frame,
             text="New Reservation",
@@ -224,7 +313,6 @@ class HotelReservationsPage(ctk.CTkFrame):
         )
         new_btn.pack(side="left", padx=5)
         
-        # Edit button
         edit_btn = ctk.CTkButton(
             action_frame,
             text="Edit",
@@ -234,7 +322,6 @@ class HotelReservationsPage(ctk.CTkFrame):
         )
         edit_btn.pack(side="left", padx=5)
         
-        # Delete button
         delete_btn = ctk.CTkButton(
             action_frame,
             text="Delete",
@@ -265,10 +352,8 @@ class HotelReservationsPage(ctk.CTkFrame):
         self.table_frame = ctk.CTkFrame(content, fg_color="white", corner_radius=12)
         self.table_frame.pack(fill="both", expand=True, padx=30, pady=(0, 30))
         
-        # Table headers with clickable sorting
+        # Table headers
         headers = ["ID Number", "Guest Name", "Check-in Date", "Total Booking Amount"]
-        self.sort_column = None
-        self.sort_descending = False
         
         header_frame = ctk.CTkFrame(self.table_frame, fg_color="transparent")
         header_frame.pack(fill="x", padx=20, pady=(20, 10))
@@ -285,14 +370,10 @@ class HotelReservationsPage(ctk.CTkFrame):
             header_label.bind("<Button-1>", lambda e, c=col: self.sort_table(c))
             header_frame.grid_columnconfigure(col, weight=1)
         
-        # Add a separator line
         separator = ctk.CTkFrame(self.table_frame, height=1, fg_color="#e2e8f0")
         separator.pack(fill="x", padx=20, pady=(0, 10))
         
-        # Display reservations
-        self.display_reservations()
-        
-        # Configure scroll region and bindings
+        # Configure scroll region
         def configure_scroll_region(event):
             canvas.configure(scrollregion=canvas.bbox("all"))
         
@@ -302,35 +383,38 @@ class HotelReservationsPage(ctk.CTkFrame):
             canvas.yview_scroll(int(-1*(event.delta/120)), "units")
         
         canvas.bind_all("<MouseWheel>", on_mousewheel)
-        canvas.bind_all("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))
-        canvas.bind_all("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))
-        
-        def on_frame_configure(event):
-            canvas.configure(width=event.width)
-            canvas.itemconfig(canvas_window, width=event.width)
-        
-        canvas.bind("<Configure>", on_frame_configure)
-    
+
     def display_reservations(self, reservations=None):
         """Display reservations in the table"""
         # Clear existing rows
-        for widget in self.table_frame.winfo_children()[2:]:  # Skip header and separator
+        for widget in self.table_frame.winfo_children()[2:]:
             widget.destroy()
         
-        # Use filtered reservations if provided, otherwise use all
+        # Reset selection
+        self.selected_row = None
+        self.selected_reservation_id = None
+        
+        # Use filtered reservations if provided
         display_data = reservations if reservations is not None else self.reservations
+        
+        if not display_data:
+            empty_frame = ctk.CTkFrame(self.table_frame, fg_color="white")
+            empty_frame.pack(fill="x", padx=20, pady=40)
+            
+            ctk.CTkLabel(
+                empty_frame,
+                text="No reservations found",
+                font=("Arial", 16),
+                text_color="#64748b"
+            ).pack()
+            return
         
         for row, reservation in enumerate(display_data):
             row_frame = ctk.CTkFrame(self.table_frame, fg_color="white")
             row_frame.pack(fill="x", padx=20, pady=10)
-            
-            # Store reservation ID as a property of the row frame for selection
             row_frame.reservation_id = reservation["id"]
-            
-            # Make the row selectable
             row_frame.bind("<Button-1>", lambda e, f=row_frame: self.select_row(f))
             
-            # Display reservation data
             cell_values = [
                 reservation["id"],
                 reservation["name"],
@@ -343,30 +427,31 @@ class HotelReservationsPage(ctk.CTkFrame):
                     row_frame,
                     text=value,
                     font=("Arial", 14),
-                    text_color="#475569"
+                    text_color="#475569",
+                    fg_color="white"
                 )
                 cell_label.grid(row=0, column=col, padx=(0, 40), sticky="w")
                 row_frame.grid_columnconfigure(col, weight=1)
+                cell_label.bind("<Button-1>", lambda e, f=row_frame: self.select_row(f))
             
-            # Add a separator line except after the last row
             if row < len(display_data) - 1:
                 separator = ctk.CTkFrame(self.table_frame, height=1, fg_color="#f1f5f9")
                 separator.pack(fill="x", padx=20)
-        
-        # Reset selection
-        self.selected_row = None
-    
+
     def select_row(self, row_frame):
         """Select a row in the table"""
-        # Reset previous selection
         if hasattr(self, 'selected_row') and self.selected_row:
+            for widget in self.selected_row.winfo_children():
+                widget.configure(fg_color="white")
             self.selected_row.configure(fg_color="white")
         
-        # Set new selection
         row_frame.configure(fg_color="#e0f2fe")
+        for widget in row_frame.winfo_children():
+            widget.configure(fg_color="#e0f2fe")
+        
         self.selected_row = row_frame
         self.selected_reservation_id = row_frame.reservation_id
-    
+
     def search_reservations(self, event=None):
         """Filter reservations based on search query"""
         query = self.search_entry.get().lower()
@@ -383,20 +468,18 @@ class HotelReservationsPage(ctk.CTkFrame):
         ]
         
         self.display_reservations(filtered)
-    
+
     def sort_table(self, column_index):
         """Sort reservations by the selected column"""
         column_keys = ["id", "name", "checkin", "amount"]
         key = column_keys[column_index]
         
-        # If clicking the same column, reverse the sort order
         if self.sort_column == column_index:
             self.sort_descending = not self.sort_descending
         else:
             self.sort_column = column_index
             self.sort_descending = False
         
-        # Special handling for dates and amounts
         if key == "checkin":
             def sort_key(x):
                 try:
@@ -413,23 +496,34 @@ class HotelReservationsPage(ctk.CTkFrame):
             def sort_key(x):
                 return x[key].lower()
         
-        self.reservations.sort(
+        sorted_reservations = sorted(
+            self.reservations,
             key=sort_key,
             reverse=self.sort_descending
         )
         
-        self.save_data()
-        self.display_reservations()
-    
+        self.display_reservations(sorted_reservations)
+
     def add_reservation(self):
         """Open dialog to add a new reservation"""
+        if not hasattr(self.controller, 'current_user') or self.controller.current_user is None:
+            messagebox.showerror("Error", "User not logged in")
+            self.controller.show_frame("LoginApp")
+            return
+            
         dialog = ctk.CTkToplevel(self)
         dialog.title("Add New Reservation")
         dialog.geometry("500x400")
         dialog.transient(self)
         dialog.grab_set()
         
-        # Form fields
+        dialog.update_idletasks()
+        width = dialog.winfo_width()
+        height = dialog.winfo_height()
+        x = (dialog.winfo_screenwidth() // 2) - (width // 2)
+        y = (dialog.winfo_screenheight() // 2) - (height // 2)
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        
         fields = [
             ("ID Number", "#", "id"),
             ("Guest Name", "Full name", "name"),
@@ -462,12 +556,10 @@ class HotelReservationsPage(ctk.CTkFrame):
             entry.pack(fill="x")
             entries[key] = entry
         
-        # Action buttons
         button_frame = ctk.CTkFrame(dialog, fg_color="transparent")
         button_frame.pack(fill="x", padx=20, pady=20)
         
         def save():
-            # Validate and save new reservation
             new_reservation = {}
             for key, entry in entries.items():
                 value = entry.get().strip()
@@ -476,16 +568,20 @@ class HotelReservationsPage(ctk.CTkFrame):
                     return
                 new_reservation[key] = value
             
-            # Check for duplicate ID
+            try:
+                datetime.strptime(new_reservation["checkin"], "%b %d, %Y")
+                float(new_reservation["amount"].replace("$", "").replace(",", ""))
+            except ValueError as e:
+                messagebox.showerror("Error", f"Invalid format: {str(e)}")
+                return
+            
             if any(r["id"] == new_reservation["id"] for r in self.reservations):
                 messagebox.showerror("Error", "Reservation ID already exists")
                 return
             
-            self.reservations.append(new_reservation)
-            self.save_data()
-            self.display_reservations()
-            dialog.destroy()
-            messagebox.showinfo("Success", "Reservation added successfully")
+            if self.save_data(reservation_data=new_reservation):
+                dialog.destroy()
+                messagebox.showinfo("Success", "Reservation added successfully")
         
         ctk.CTkButton(
             button_frame,
@@ -502,14 +598,18 @@ class HotelReservationsPage(ctk.CTkFrame):
             hover_color="#475569",
             command=dialog.destroy
         ).pack(side="left", padx=10)
-    
+
     def edit_reservation(self):
         """Open dialog to edit selected reservation"""
+        if not hasattr(self.controller, 'current_user') or self.controller.current_user is None:
+            messagebox.showerror("Error", "User not logged in")
+            self.controller.show_frame("LoginApp")
+            return
+            
         if not hasattr(self, 'selected_reservation_id') or not self.selected_reservation_id:
             messagebox.showwarning("Warning", "Please select a reservation to edit")
             return
         
-        # Find the selected reservation
         reservation = next(
             (r for r in self.reservations if r["id"] == self.selected_reservation_id),
             None
@@ -525,9 +625,15 @@ class HotelReservationsPage(ctk.CTkFrame):
         dialog.transient(self)
         dialog.grab_set()
         
-        # Form fields
+        dialog.update_idletasks()
+        width = dialog.winfo_width()
+        height = dialog.winfo_height()
+        x = (dialog.winfo_screenwidth() // 2) - (width // 2)
+        y = (dialog.winfo_screenheight() // 2) - (height // 2)
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        
         fields = [
-            ("ID Number", "id", False),  # ID shouldn't be editable
+            ("ID Number", "id", False),
             ("Guest Name", "name", True),
             ("Check-in Date", "checkin", True),
             ("Total Booking Amount", "amount", True)
@@ -559,20 +665,31 @@ class HotelReservationsPage(ctk.CTkFrame):
             entry.pack(fill="x")
             entries[key] = entry
         
-        # Action buttons
         button_frame = ctk.CTkFrame(dialog, fg_color="transparent")
         button_frame.pack(fill="x", padx=20, pady=20)
         
         def save():
-            # Update reservation data
+            updated_reservation = {'id': reservation['id']}
             for key, entry in entries.items():
                 if entry.cget("state") != "disabled":
-                    reservation[key] = entry.get().strip()
+                    value = entry.get().strip()
+                    if not value:
+                        messagebox.showerror("Error", f"Please enter {key}")
+                        return
+                    updated_reservation[key] = value
             
-            self.save_data()
-            self.display_reservations()
-            dialog.destroy()
-            messagebox.showinfo("Success", "Reservation updated successfully")
+            try:
+                if "checkin" in updated_reservation:
+                    datetime.strptime(updated_reservation["checkin"], "%b %d, %Y")
+                if "amount" in updated_reservation:
+                    float(updated_reservation["amount"].replace("$", "").replace(",", ""))
+            except ValueError as e:
+                messagebox.showerror("Error", f"Invalid format: {str(e)}")
+                return
+            
+            if self.save_data(reservation_data=updated_reservation):
+                dialog.destroy()
+                messagebox.showinfo("Success", "Reservation updated successfully")
         
         ctk.CTkButton(
             button_frame,
@@ -589,24 +706,34 @@ class HotelReservationsPage(ctk.CTkFrame):
             hover_color="#475569",
             command=dialog.destroy
         ).pack(side="left", padx=10)
-    
+
     def delete_reservation(self):
         """Delete selected reservation"""
+        if not hasattr(self.controller, 'current_user') or self.controller.current_user is None:
+            messagebox.showerror("Error", "User not logged in")
+            self.controller.show_frame("LoginApp")
+            return
+            
         if not hasattr(self, 'selected_reservation_id') or not self.selected_reservation_id:
             messagebox.showwarning("Warning", "Please select a reservation to delete")
             return
         
-        # Confirm deletion
-        if not messagebox.askyesno("Confirm", "Are you sure you want to delete this reservation?"):
+        reservation = next(
+            (r for r in self.reservations if r["id"] == self.selected_reservation_id),
+            None
+        )
+        
+        if not reservation:
+            messagebox.showerror("Error", "Selected reservation not found")
             return
         
-        # Find and remove the reservation
-        for i, r in enumerate(self.reservations):
-            if r["id"] == self.selected_reservation_id:
-                del self.reservations[i]
-                self.save_data()
-                self.display_reservations()
-                messagebox.showinfo("Success", "Reservation deleted successfully")
-                return
+        if not messagebox.askyesno(
+            "Confirm", 
+            f"Are you sure you want to delete reservation {reservation['id']} for {reservation['name']}?"
+        ):
+            return
         
-        messagebox.showerror("Error", "Selected reservation not found")
+        if self.save_data(delete_id=self.selected_reservation_id):
+            self.selected_row = None
+            self.selected_reservation_id = None
+            messagebox.showinfo("Success", "Reservation deleted successfully")

@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 import os
 import hashlib
 import re
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Tuple, List
 import logging
 from datetime import datetime, timedelta
 
@@ -39,7 +39,7 @@ class DatabaseManager:
                     user=os.getenv("DB_USER"),
                     password=os.getenv("DB_PASSWORD"),
                     database=os.getenv("DB_NAME"),
-                    ssl_disabled=False,  # SSL enabled without cert verification
+                    ssl_disabled=False,
                     connect_timeout=5,
                     connection_timeout=30,
                     autocommit=True,
@@ -100,6 +100,32 @@ class DatabaseManager:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL
                 ) ENGINE=InnoDB
+            """,
+            'reservations': """
+                CREATE TABLE IF NOT EXISTS reservations (
+                    reservation_id VARCHAR(20) PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    guest_name VARCHAR(100) NOT NULL,
+                    checkin_date DATE NOT NULL,
+                    booking_amount DECIMAL(10,2) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """,
+            'customers': """
+                CREATE TABLE IF NOT EXISTS customers (
+                    customer_id VARCHAR(20) PRIMARY KEY,
+                    full_name VARCHAR(100) NOT NULL,
+                    email VARCHAR(100) NOT NULL COLLATE utf8mb4_bin,
+                    address TEXT NOT NULL,
+                    phone VARCHAR(20) NOT NULL,
+                    status ENUM('Active','Inactive') NOT NULL DEFAULT 'Active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE INDEX idx_email (email),
+                    INDEX idx_status (status)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """
         }
 
@@ -121,6 +147,108 @@ class DatabaseManager:
             logger.error(f"Database initialization failed: {err}")
             raise
 
+    # ========== CUSTOMER MANAGEMENT METHODS ==========
+    def get_customers(self, status_filter: str = 'all') -> List[Dict]:
+        """Get customers with optional status filter"""
+        try:
+            query = "SELECT customer_id, full_name, email, address, phone, status FROM customers"
+            params = ()
+            
+            if status_filter.lower() != 'all':
+                query += " WHERE status = %s"
+                params = (status_filter.capitalize(),)
+                
+            query += " ORDER BY full_name ASC"
+            
+            with self.connection.cursor(dictionary=True) as cursor:
+                cursor.execute(query, params)
+                return cursor.fetchall()
+                
+        except Error as err:
+            logger.error(f"Error fetching customers: {err}")
+            return []
+
+    def add_customer(self, customer_data: Dict) -> bool:
+        """Add a new customer to the database"""
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO customers 
+                    (customer_id, full_name, email, address, phone, status)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (
+                    customer_data['customer_id'],
+                    customer_data['full_name'],
+                    customer_data['email'],
+                    customer_data['address'],
+                    customer_data['phone'],
+                    customer_data['status']
+                ))
+                return True
+        except Error as err:
+            logger.error(f"Error adding customer: {err}")
+            return False
+
+    def update_customer(self, customer_id: str, updated_data: Dict) -> bool:
+        """Update an existing customer"""
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE customers SET
+                    full_name = %s,
+                    email = %s,
+                    address = %s,
+                    phone = %s,
+                    status = %s
+                    WHERE customer_id = %s
+                """, (
+                    updated_data['full_name'],
+                    updated_data['email'],
+                    updated_data['address'],
+                    updated_data['phone'],
+                    updated_data['status'],
+                    customer_id
+                ))
+                return cursor.rowcount > 0
+        except Error as err:
+            logger.error(f"Error updating customer: {err}")
+            return False
+
+    def delete_customer(self, customer_id: str) -> bool:
+        """Delete a customer from the database"""
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute("""
+                    DELETE FROM customers 
+                    WHERE customer_id = %s
+                """, (customer_id,))
+                return cursor.rowcount > 0
+        except Error as err:
+            logger.error(f"Error deleting customer: {err}")
+            return False
+
+    def search_customers(self, search_query: str) -> List[Dict]:
+        """Search customers by name, email, address or phone"""
+        try:
+            query = """
+                SELECT customer_id, full_name, email, address, phone, status 
+                FROM customers 
+                WHERE full_name LIKE %s 
+                   OR email LIKE %s 
+                   OR address LIKE %s 
+                   OR phone LIKE %s
+                ORDER BY full_name ASC
+            """
+            search_param = f"%{search_query}%"
+            
+            with self.connection.cursor(dictionary=True) as cursor:
+                cursor.execute(query, (search_param, search_param, search_param, search_param))
+                return cursor.fetchall()
+        except Error as err:
+            logger.error(f"Error searching customers: {err}")
+            return []
+
+    # ========== USER AUTHENTICATION METHODS ==========
     def register_user(self, full_name: str, email: str, password: str, gender: str) -> Tuple[bool, str]:
         """Register a new user with comprehensive validation"""
         try:
@@ -268,36 +396,39 @@ def hash_password(password: str) -> str:
 if __name__ == "__main__":
     # Test database connection and basic operations
     with DatabaseManager() as db:
-        # Test registration
-        test_email = "test_user@example.com"
-        test_pass = "SecurePassword123!"
+        # Test customer operations
+        test_customer = {
+            'customer_id': 'CUST1001',
+            'full_name': 'Test Customer',
+            'email': 'test.customer@example.com',
+            'address': '123 Test Street',
+            'phone': '(123) 456-7890',
+            'status': 'Active'
+        }
         
         # Cleanup previous test data
         with db.connection.cursor() as cursor:
-            cursor.execute("DELETE FROM users WHERE email = %s", (test_email,))
+            cursor.execute("DELETE FROM customers WHERE customer_id = %s", (test_customer['customer_id'],))
             db.connection.commit()
         
-        # Test registration
-        success, message = db.register_user(
-            "Test User", 
-            test_email, 
-            test_pass, 
-            "Male"
-        )
-        print(f"Registration: {success} - {message}")
+        # Test adding customer
+        print("Adding customer:", db.add_customer(test_customer))
         
-        # Test authentication
-        user = db.authenticate_user(test_email, test_pass)
-        print(f"Authentication: {bool(user)}")
+        # Test getting customers
+        print("All customers:", db.get_customers())
         
-        # Test failed authentication
-        user = db.authenticate_user(test_email, "wrongpassword")
-        print(f"Failed auth: {not user}")
+        # Test updating customer
+        updated_data = {
+            'full_name': 'Updated Test Customer',
+            'email': 'updated.test@example.com',
+            'address': '456 Updated Street',
+            'phone': '(987) 654-3210',
+            'status': 'Inactive'
+        }
+        print("Updating customer:", db.update_customer(test_customer['customer_id'], updated_data))
         
-        # Test session management
-        if user:
-            session_id = "test_session_123"
-            expires_at = (datetime.now() + timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
-            if db.create_session(user['user_id'], session_id, "127.0.0.1", "Python Test", expires_at):
-                print("Session created successfully")
-                print("Session valid:", bool(db.verify_session(session_id)))
+        # Test searching customers
+        print("Search results:", db.search_customers("Test"))
+        
+        # Test deleting customer
+        print("Deleting customer:", db.delete_customer(test_customer['customer_id']))

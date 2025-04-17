@@ -144,11 +144,11 @@ class PasswordRecoveryApp(ctk.CTkFrame):
         self.back_to_login_link.bind("<Button-1>", lambda e: self.controller.show_frame("LoginApp"))
 
         # Footer
-        self.footer_label = ctk.CTkLabel(self.main_frame, 
-                                       text="© 2024 Sample University, Spring 2025", 
-                                       font=("Arial", 8, "bold"), 
-                                       text_color="black")
-        self.footer_label.pack(pady=(20, 10))
+        # self.footer_label = ctk.CTkLabel(self.main_frame, 
+        #                                text="© 2024 Sample University, Spring 2025", 
+        #                                font=("Arial", 8, "bold"), 
+        #                                text_color="black")
+        # self.footer_label.pack(pady=(20, 10))
 
     def toggle_password(self, entry, button):
         """Toggle password visibility with visual feedback"""

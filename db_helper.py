@@ -10,13 +10,14 @@ from datetime import datetime, timedelta
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO, 
+    level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
+
 
 class DatabaseManager:
     def __init__(self):
@@ -156,6 +157,20 @@ class DatabaseManager:
                     UNIQUE KEY unique_date (date)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """,
+            "staff": """
+                CREATE TABLE IF NOT EXISTS staff (
+                    staff_id VARCHAR(20) PRIMARY KEY,
+                    full_name VARCHAR(100) NOT NULL,
+                    email VARCHAR(100) NOT NULL COLLATE utf8mb4_bin,
+                    phone VARCHAR(20) NOT NULL,
+                    address TEXT NOT NULL,
+                    status ENUM('Active','Inactive') NOT NULL DEFAULT 'Active',
+                    password VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE INDEX idx_staff_email (email)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """
         }
 
         try:
@@ -176,6 +191,110 @@ class DatabaseManager:
         except Error as err:
             logger.error(f"Database initialization failed: {err}")
             raise
+
+    # ========== STAFF MANAGEMENT METHODS ==========
+    def get_staff_members(self, status="all"):
+        """Get staff members filtered by status"""
+        query = "SELECT * FROM staff"
+        params = ()
+
+        if status == "active":
+            query += " WHERE status = 'Active'"
+        elif status == "inactive":
+            query += " WHERE status = 'Inactive'"
+
+        try:
+            with self.connection.cursor(dictionary=True) as cursor:
+                cursor.execute(query, params)
+                return cursor.fetchall()
+        except Error as err:
+            logger.error(f"Error fetching staff members: {err}")
+            return []
+
+    def search_staff_members(self, query):
+        """Search staff members by name, email or phone"""
+        try:
+            with self.connection.cursor(dictionary=True) as cursor:
+                cursor.execute("""
+                    SELECT * FROM staff 
+                    WHERE full_name LIKE %s 
+                    OR email LIKE %s 
+                    OR phone LIKE %s
+                """, (f"%{query}%", f"%{query}%", f"%{query}%"))
+                return cursor.fetchall()
+        except Error as err:
+            logger.error(f"Error searching staff: {err}")
+            return []
+
+    def add_staff_member(self, staff_data):
+        """Add a new staff member"""
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO staff 
+                    (staff_id, full_name, email, phone, address, status, password)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    staff_data['staff_id'],
+                    staff_data['full_name'],
+                    staff_data['email'],
+                    staff_data['phone'],
+                    staff_data['address'],
+                    staff_data['status'],
+                    staff_data['password']
+                ))
+                return True
+        except Error as err:
+            logger.error(f"Error adding staff member: {err}")
+            return False
+
+    def update_staff_member(self, staff_id, updated_data):
+        """Update staff member details"""
+        try:
+            with self.connection.cursor() as cursor:
+                query = "UPDATE staff SET "
+                params = []
+
+                if 'full_name' in updated_data:
+                    query += "full_name = %s, "
+                    params.append(updated_data['full_name'])
+                if 'email' in updated_data:
+                    query += "email = %s, "
+                    params.append(updated_data['email'])
+                if 'phone' in updated_data:
+                    query += "phone = %s, "
+                    params.append(updated_data['phone'])
+                if 'address' in updated_data:
+                    query += "address = %s, "
+                    params.append(updated_data['address'])
+                if 'status' in updated_data:
+                    query += "status = %s, "
+                    params.append(updated_data['status'])
+                if 'password' in updated_data:
+                    query += "password = %s, "
+                    params.append(updated_data['password'])
+
+                # Remove trailing comma and space
+                query = query.rstrip(', ')
+
+                query += " WHERE staff_id = %s"
+                params.append(staff_id)
+
+                cursor.execute(query, params)
+                return cursor.rowcount > 0
+        except Error as err:
+            logger.error(f"Error updating staff member: {err}")
+            return False
+
+    def delete_staff_member(self, staff_id):
+        """Delete a staff member"""
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute("DELETE FROM staff WHERE staff_id = %s", (staff_id,))
+                return cursor.rowcount > 0
+        except Error as err:
+            logger.error(f"Error deleting staff member: {err}")
+            return False
 
     # ========== DASHBOARD REPORTING METHODS ==========
     def get_total_bookings_cost(self) -> float:
@@ -247,8 +366,8 @@ class DatabaseManager:
         """Get customer growth data for the last N months"""
         try:
             end_date = datetime.now()
-            start_date = end_date - timedelta(days=30*months)
-            
+            start_date = end_date - timedelta(days=30 * months)
+
             query = """
                 SELECT 
                     DATE_FORMAT(created_at, '%Y-%m') AS month_group,
@@ -259,11 +378,11 @@ class DatabaseManager:
                 GROUP BY month_group, month
                 ORDER BY month_group ASC
             """
-            
+
             with self.connection.cursor(dictionary=True) as cursor:
                 cursor.execute(query, (start_date, end_date))
                 results = cursor.fetchall()
-                
+
             # Fill in missing months with 0 values
             all_months = {}
             current_date = start_date
@@ -271,11 +390,11 @@ class DatabaseManager:
                 month_key = current_date.strftime('%b')
                 all_months[month_key] = 0
                 current_date += timedelta(days=30)
-                
+
             # Update with actual data
             for row in results:
                 all_months[row['month']] = int(row['new_customers'])
-                
+
             return all_months
         except Error as err:
             logger.error(f"Error fetching customer growth data: {err}")
@@ -285,8 +404,8 @@ class DatabaseManager:
         """Get revenue trends for the last N months"""
         try:
             end_date = datetime.now()
-            start_date = end_date - timedelta(days=30*months)
-            
+            start_date = end_date - timedelta(days=30 * months)
+
             query = """
                 SELECT 
                     DATE_FORMAT(transaction_date, '%Y-%m') AS month_group,
@@ -297,11 +416,11 @@ class DatabaseManager:
                 GROUP BY month_group, month
                 ORDER BY month_group ASC
             """
-            
+
             with self.connection.cursor(dictionary=True) as cursor:
                 cursor.execute(query, (start_date, end_date))
                 results = cursor.fetchall()
-                
+
             # Fill in missing months
             all_months = {}
             current_date = start_date
@@ -309,10 +428,10 @@ class DatabaseManager:
                 month_key = current_date.strftime('%b')
                 all_months[month_key] = 0.0
                 current_date += timedelta(days=30)
-                
+
             for row in results:
                 all_months[row['month']] = float(row['revenue'])
-                
+
             return all_months
         except Error as err:
             logger.error(f"Error getting revenue trends: {err}")
@@ -322,8 +441,8 @@ class DatabaseManager:
         """Get booking trends for the last N months"""
         try:
             end_date = datetime.now()
-            start_date = end_date - timedelta(days=30*months)
-            
+            start_date = end_date - timedelta(days=30 * months)
+
             query = """
                 SELECT 
                     DATE_FORMAT(created_at, '%Y-%m') AS month_group,
@@ -334,11 +453,11 @@ class DatabaseManager:
                 GROUP BY month_group, month
                 ORDER BY month_group ASC
             """
-            
+
             with self.connection.cursor(dictionary=True) as cursor:
                 cursor.execute(query, (start_date, end_date))
                 results = cursor.fetchall()
-                
+
             # Fill in missing months
             all_months = {}
             current_date = start_date
@@ -346,10 +465,10 @@ class DatabaseManager:
                 month_key = current_date.strftime('%b')
                 all_months[month_key] = 0
                 current_date += timedelta(days=30)
-                
+
             for row in results:
                 all_months[row['month']] = int(row['bookings'])
-                
+
             return all_months
         except Error as err:
             logger.error(f"Error getting booking trends: {err}")
@@ -460,7 +579,7 @@ class DatabaseManager:
 
             with self.connection.cursor(dictionary=True) as cursor:
                 cursor.execute(
-                    query, 
+                    query,
                     (search_param, search_param, search_param, search_param)
                 )
                 return cursor.fetchall()
@@ -470,7 +589,7 @@ class DatabaseManager:
 
     # ========== USER AUTHENTICATION METHODS ==========
     def register_user(
-        self, full_name: str, email: str, password: str, gender: str
+            self, full_name: str, email: str, password: str, gender: str
     ) -> Tuple[bool, str]:
         """Register a new user with comprehensive validation"""
         try:
@@ -561,7 +680,7 @@ class DatabaseManager:
             logger.error(f"Failed to log auth action: {err}")
 
     def create_session(
-        self, user_id: int, session_id: str, ip: str, user_agent: str, expires_at: str
+            self, user_id: int, session_id: str, ip: str, user_agent: str, expires_at: str
     ) -> bool:
         """Create a new user session with validation"""
         try:
@@ -717,6 +836,19 @@ def populate_test_data(db):
             (date.date(), occupied, total),
         )
 
+    # Add sample staff members
+    for i in range(1, 11):
+        staff_id = f"STAFF{100 + i}"
+        db.add_staff_member({
+            "staff_id": staff_id,
+            "full_name": f"Staff Member {i}",
+            "email": f"staff{i}@example.com",
+            "phone": f"({random.randint(100, 999)}) {random.randint(100, 999)}-{random.randint(1000, 9999)}",
+            "address": f"{random.randint(1, 1000)} Staff St",
+            "status": "Active" if random.random() > 0.2 else "Inactive",
+            "password": hash_password(f"staff{i}pass")
+        })
+
     db.connection.commit()
     print("Test data populated successfully")
 
@@ -733,16 +865,19 @@ if __name__ == "__main__":
         print("Total Reservations:", db.get_total_reservations())
         print("Active Customers:", db.get_active_customers_count())
         print("Total Customers:", db.get_total_customers())
-        
+
         print("\n=== Recent Customers ===")
         for customer in db.get_recent_customers():
             print(f"{customer['name']} ({customer['email']})")
-            
+
         print("\n=== Customer Growth ===")
         print(db.get_customer_growth())
-        
+
         print("\n=== Revenue Trends ===")
         print(db.get_revenue_trends())
-        
+
         print("\n=== Booking Trends ===")
         print(db.get_booking_trends())
+
+        print("\n=== Staff Members ===")
+        print(db.get_staff_members())

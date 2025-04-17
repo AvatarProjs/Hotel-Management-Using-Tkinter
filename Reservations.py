@@ -1,47 +1,41 @@
 import customtkinter as ctk
-from tkinter import messagebox
-from datetime import datetime
+from tkinter import ttk, messagebox
+from datetime import datetime, date
 from db_helper import DatabaseManager
+
 
 class HotelReservationsPage(ctk.CTkFrame):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
-        
+
         # Initialize data
         self.reservations = []
-        self.selected_row = None
         self.selected_reservation_id = None
         self.sort_column = None
         self.sort_descending = False
-        
+
         # Configure grid layout
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
-        
+
         # Create components
         self.create_sidebar()
         self.create_main_content()
-        
+
         # Bind to frame activation
         self.bind("<Visibility>", lambda e: self.load_data())
 
     def load_data(self):
         """Load reservations data from database"""
         try:
-            # Check if user is logged in
-            if not hasattr(self.controller, 'current_user') or self.controller.current_user is None:
-                messagebox.showerror("Error", "User not logged in")
-                self.controller.show_frame("LoginApp")
-                return
-                
             # Ensure database connection
             if not hasattr(self.controller, 'db'):
                 self.controller.db = DatabaseManager()
-                
+
             if not self.controller.db.connection.is_connected():
                 self.controller.db.connect()
-                
+
             with self.controller.db.connection.cursor(dictionary=True) as cursor:
                 cursor.execute("""
                     SELECT 
@@ -54,24 +48,17 @@ class HotelReservationsPage(ctk.CTkFrame):
                     ORDER BY checkin_date DESC
                 """, (self.controller.current_user['user_id'],))
                 self.reservations = cursor.fetchall()
-                
+
             # Update the UI with the loaded data
             self.display_reservations()
-            
+
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to load data: {str(e)}")
             self.reservations = []
             self.display_reservations()
 
     def save_data(self, reservation_data=None, delete_id=None):
         """Save or delete reservation data in database"""
         try:
-            # Check if user is logged in
-            if not hasattr(self.controller, 'current_user') or self.controller.current_user is None:
-                messagebox.showerror("Error", "User not logged in")
-                self.controller.show_frame("LoginApp")
-                return False
-                
             # Ensure database connection
             if not hasattr(self.controller, 'db') or not self.controller.db.connection.is_connected():
                 self.controller.db = DatabaseManager()
@@ -86,7 +73,7 @@ class HotelReservationsPage(ctk.CTkFrame):
                     except ValueError as e:
                         messagebox.showerror("Error", f"Invalid format: {str(e)}")
                         return False
-                    
+
                     # Update existing reservation
                     if any(r['id'] == reservation_data['id'] for r in self.reservations):
                         cursor.execute("""
@@ -121,11 +108,11 @@ class HotelReservationsPage(ctk.CTkFrame):
                         DELETE FROM reservations 
                         WHERE reservation_id = %s AND user_id = %s
                     """, (delete_id, self.controller.current_user['user_id']))
-                
+
                 self.controller.db.connection.commit()
                 self.load_data()  # Refresh data after changes
                 return True
-                
+
         except Exception as e:
             messagebox.showerror("Error", f"Database operation failed: {str(e)}")
             if "MySQL Connection not available" in str(e):
@@ -140,7 +127,7 @@ class HotelReservationsPage(ctk.CTkFrame):
         """Create the sidebar navigation"""
         sidebar = ctk.CTkFrame(self, width=250, fg_color="#f0f9ff", corner_radius=0)
         sidebar.grid(row=0, column=0, sticky="nsew")
-        
+
         # Navigation items
         nav_items = [
             ("Dashboard", "📊", "HotelBookingDashboard"),
@@ -148,29 +135,29 @@ class HotelReservationsPage(ctk.CTkFrame):
             ("Customers", "👥", "CustomerManagementScreen"),
             ("Reports", "📄", "HotelReportsPage")
         ]
-        
+
         # Add padding
         padding = ctk.CTkLabel(sidebar, text="", fg_color="transparent")
         padding.pack(pady=(20, 10))
-        
+
         # Add navigation buttons
         for item, icon, frame_name in nav_items:
             is_active = frame_name == "HotelReservationsPage"
             btn_color = "#dbeafe" if is_active else "transparent"
-            
+
             btn_frame = ctk.CTkFrame(sidebar, fg_color=btn_color, corner_radius=8)
             btn_frame.pack(fill="x", padx=15, pady=5)
-            
+
             content_frame = ctk.CTkFrame(btn_frame, fg_color="transparent")
             content_frame.pack(pady=8, padx=15, anchor="w")
-            
+
             ctk.CTkLabel(
                 content_frame,
                 text=icon,
                 font=("Arial", 16),
                 text_color="#64748b"
             ).pack(side="left", padx=(0, 10))
-            
+
             btn = ctk.CTkButton(
                 content_frame,
                 text=item,
@@ -182,11 +169,11 @@ class HotelReservationsPage(ctk.CTkFrame):
                 command=lambda fn=frame_name: self.controller.show_frame(fn)
             )
             btn.pack(side="left")
-        
+
         # Add logout button
         logout_frame = ctk.CTkFrame(sidebar, fg_color="transparent")
         logout_frame.pack(side="bottom", fill="x", padx=15, pady=20)
-        
+
         ctk.CTkButton(
             logout_frame,
             text="Logout",
@@ -207,23 +194,23 @@ class HotelReservationsPage(ctk.CTkFrame):
         main.grid(row=0, column=1, sticky="nsew")
         main.grid_rowconfigure(1, weight=1)
         main.grid_columnconfigure(0, weight=1)
-        
+
         # Header section
         header_frame = ctk.CTkFrame(main, height=70, fg_color="white", corner_radius=0)
         header_frame.grid(row=0, column=0, sticky="ew", padx=0, pady=0)
         header_frame.grid_columnconfigure(0, weight=0)
         header_frame.grid_columnconfigure(1, weight=1)
         header_frame.grid_columnconfigure(2, weight=0)
-        
+
         # Logo
         logo_label = ctk.CTkLabel(
-            header_frame, 
-            text="Hotel Booking System", 
-            font=("Arial", 16, "bold"), 
+            header_frame,
+            text="Hotel Booking and Management System",
+            font=("Arial", 16, "bold"),
             text_color="#2c3e50"
         )
         logo_label.grid(row=0, column=0, padx=(20, 10), pady=20, sticky="w")
-        
+
         # Navigation items in header
         nav_items = [
             ("Dashboard", "HotelBookingDashboard"),
@@ -231,10 +218,10 @@ class HotelReservationsPage(ctk.CTkFrame):
             ("Reservations", "HotelReservationsPage"),
             ("Reports", "HotelReportsPage")
         ]
-        
+
         nav_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
         nav_frame.grid(row=0, column=1, sticky="")
-        
+
         for item, frame_name in nav_items:
             text_color = "#3b82f6" if frame_name == self.__class__.__name__ else "#64748b"
             btn = ctk.CTkButton(
@@ -249,61 +236,43 @@ class HotelReservationsPage(ctk.CTkFrame):
                 command=lambda fn=frame_name: self.controller.show_frame(fn)
             )
             btn.pack(side="left", padx=15)
-        
-        # Right side icons
+
+        # User info
         icons_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
         icons_frame.grid(row=0, column=2, padx=20, sticky="e")
-        
-        search_icon = ctk.CTkLabel(icons_frame, text="🔍", font=("Arial", 20))
-        search_icon.pack(side="left", padx=10)
-        
-        notification_icon = ctk.CTkLabel(icons_frame, text="🔔", font=("Arial", 20))
-        notification_icon.pack(side="left", padx=10)
-        
-        profile_icon = ctk.CTkLabel(icons_frame, text="👤", font=("Arial", 20))
-        profile_icon.pack(side="left", padx=10)
-        
+
         if hasattr(self.controller, 'current_user') and self.controller.current_user:
             username = self.controller.current_user.get('full_name', '').split()[0]
             if username:
                 ctk.CTkLabel(
-                    icons_frame, 
+                    icons_frame,
                     text=username,
                     font=("Arial", 14),
                     text_color="#64748b"
                 ).pack(side="left", padx=5)
-        
+
         # Scrollable content area
-        canvas_frame = ctk.CTkFrame(main, fg_color="#f8fafc")
-        canvas_frame.grid(row=1, column=0, sticky="nsew")
-        canvas_frame.grid_rowconfigure(0, weight=1)
-        canvas_frame.grid_columnconfigure(0, weight=1)
-        
-        canvas = ctk.CTkCanvas(canvas_frame, bg="#f8fafc", highlightthickness=0)
-        scrollbar = ctk.CTkScrollbar(canvas_frame, orientation="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        scrollbar.grid(row=0, column=1, sticky="ns")
-        canvas.grid(row=0, column=0, sticky="nsew")
-        
-        content = ctk.CTkFrame(canvas, fg_color="#f8fafc")
-        canvas_window = canvas.create_window((0, 0), window=content, anchor="nw")
-        
+        content_frame = ctk.CTkFrame(main, fg_color="#f8fafc")
+        content_frame.grid(row=1, column=0, sticky="nsew")
+        content_frame.grid_rowconfigure(1, weight=1)
+        content_frame.grid_columnconfigure(0, weight=1)
+
         # Page title
-        title_frame = ctk.CTkFrame(content, fg_color="transparent")
-        title_frame.pack(fill="x", padx=30, pady=(30, 20))
-        
+        title_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
+        title_frame.grid(row=0, column=0, sticky="ew", padx=30, pady=(30, 20))
+        title_frame.grid_columnconfigure(0, weight=1)
+
         ctk.CTkLabel(
             title_frame,
             text="All Reservations",
             font=("Arial", 24, "bold"),
             text_color="#2c3e50"
-        ).pack(side="left")
-        
+        ).grid(row=0, column=0, sticky="w")
+
         # Action buttons
         action_frame = ctk.CTkFrame(title_frame, fg_color="transparent")
-        action_frame.pack(side="right")
-        
+        action_frame.grid(row=0, column=1, sticky="e")
+
         new_btn = ctk.CTkButton(
             action_frame,
             text="New Reservation",
@@ -312,7 +281,7 @@ class HotelReservationsPage(ctk.CTkFrame):
             command=self.add_reservation
         )
         new_btn.pack(side="left", padx=5)
-        
+
         edit_btn = ctk.CTkButton(
             action_frame,
             text="Edit",
@@ -321,7 +290,7 @@ class HotelReservationsPage(ctk.CTkFrame):
             command=self.edit_reservation
         )
         edit_btn.pack(side="left", padx=5)
-        
+
         delete_btn = ctk.CTkButton(
             action_frame,
             text="Delete",
@@ -330,11 +299,11 @@ class HotelReservationsPage(ctk.CTkFrame):
             command=self.delete_reservation
         )
         delete_btn.pack(side="left", padx=5)
-        
+
         # Search bar
-        search_frame = ctk.CTkFrame(content, fg_color="transparent")
-        search_frame.pack(fill="x", padx=30, pady=(0, 20))
-        
+        search_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
+        search_frame.grid(row=1, column=0, sticky="ew", padx=30, pady=(0, 20))
+
         self.search_entry = ctk.CTkEntry(
             search_frame,
             placeholder_text="Search by ID, Name or Date",
@@ -347,203 +316,219 @@ class HotelReservationsPage(ctk.CTkFrame):
         )
         self.search_entry.pack(side="left")
         self.search_entry.bind("<KeyRelease>", self.search_reservations)
-        
-        # Reservations table
-        self.table_frame = ctk.CTkFrame(content, fg_color="white", corner_radius=12)
-        self.table_frame.pack(fill="both", expand=True, padx=30, pady=(0, 30))
-        
-        # Table headers
-        headers = ["ID Number", "Guest Name", "Check-in Date", "Total Booking Amount"]
-        
-        header_frame = ctk.CTkFrame(self.table_frame, fg_color="transparent")
-        header_frame.pack(fill="x", padx=20, pady=(20, 10))
-        
-        for col, header in enumerate(headers):
-            header_label = ctk.CTkLabel(
-                header_frame,
-                text=header,
-                font=("Arial", 14, "bold"),
-                text_color="#64748b",
-                cursor="hand2"
-            )
-            header_label.grid(row=0, column=col, padx=(0, 40), sticky="w")
-            header_label.bind("<Button-1>", lambda e, c=col: self.sort_table(c))
-            header_frame.grid_columnconfigure(col, weight=1)
-        
-        separator = ctk.CTkFrame(self.table_frame, height=1, fg_color="#e2e8f0")
-        separator.pack(fill="x", padx=20, pady=(0, 10))
-        
-        # Configure scroll region
-        def configure_scroll_region(event):
-            canvas.configure(scrollregion=canvas.bbox("all"))
-        
-        content.bind("<Configure>", configure_scroll_region)
-        
-        def on_mousewheel(event):
-            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        
-        canvas.bind_all("<MouseWheel>", on_mousewheel)
+
+        # Treeview Table Frame
+        table_container = ctk.CTkFrame(content_frame, fg_color="white", corner_radius=12)
+        table_container.grid(row=2, column=0, sticky="nsew", padx=30, pady=(0, 30))
+        table_container.grid_rowconfigure(0, weight=1)
+        table_container.grid_columnconfigure(0, weight=1)
+
+        # Create Treeview with scrollbar
+        self.tree_frame = ctk.CTkFrame(table_container, fg_color="white")
+        self.tree_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        # Create Treeview with scrollbar
+        style = ttk.Style()
+        style.theme_use("default")
+
+        # Configure the Treeview style
+        style.configure("Treeview",
+                        background="#ffffff",
+                        foreground="#475569",
+                        rowheight=40,
+                        fieldbackground="#ffffff",
+                        font=("Arial", 12)
+                        )
+        style.configure("Treeview.Heading",
+                        font=("Arial", 12, "bold"),
+                        foreground="#64748b"
+                        )
+
+        # Selection colors
+        style.map('Treeview',
+                  background=[('selected', '#e0f2fe')],
+                  foreground=[('selected', '#475569')]
+                  )
+
+        # Create scrollbar
+        scrollbar = ttk.Scrollbar(self.tree_frame)
+        scrollbar.pack(side="right", fill="y")
+
+        # Create Treeview
+        self.tree = ttk.Treeview(
+            self.tree_frame,
+            columns=("id", "name", "checkin", "amount"),
+            show="headings",
+            height=10,
+            yscrollcommand=scrollbar.set
+        )
+        scrollbar.config(command=self.tree.yview)
+
+        # Define column headings - ensure all are left-aligned
+        column_data = [
+            ("id", "ID Number", 120),
+            ("name", "Guest Name", 200),
+            ("checkin", "Check-in Date", 150),
+            ("amount", "Total Booking Amount", 200)
+        ]
+
+        for col_id, col_name, col_width in column_data:
+            self.tree.heading(col_id, text=col_name, anchor="w")  # Set heading to left-aligned
+            self.tree.column(col_id, width=col_width, anchor="w")  # Set column content to left-aligned
+
+        # Add sorting functionality
+        for col in ["id", "name", "checkin", "amount"]:
+            self.tree.heading(col, command=lambda c=col: self.sort_treeview(c))
+
+        self.tree.pack(fill="both", expand=True)
+
+        # Bind selection event
+        self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
+
+        # Add padding to left of first column for better appearance
+        style.layout("Treeview", [
+            ('Treeview.treearea', {'sticky': 'nswe'})
+        ])
 
     def display_reservations(self, reservations=None):
-        """Display reservations in the table"""
+        """Display reservations in the treeview"""
         # Clear existing rows
-        for widget in self.table_frame.winfo_children()[2:]:
-            widget.destroy()
-        
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
         # Reset selection
-        self.selected_row = None
         self.selected_reservation_id = None
-        
+
         # Use filtered reservations if provided
         display_data = reservations if reservations is not None else self.reservations
-        
-        if not display_data:
-            empty_frame = ctk.CTkFrame(self.table_frame, fg_color="white")
-            empty_frame.pack(fill="x", padx=20, pady=40)
-            
-            ctk.CTkLabel(
-                empty_frame,
-                text="No reservations found",
-                font=("Arial", 16),
-                text_color="#64748b"
-            ).pack()
-            return
-        
-        for row, reservation in enumerate(display_data):
-            row_frame = ctk.CTkFrame(self.table_frame, fg_color="white")
-            row_frame.pack(fill="x", padx=20, pady=10)
-            row_frame.reservation_id = reservation["id"]
-            row_frame.bind("<Button-1>", lambda e, f=row_frame: self.select_row(f))
-            
-            cell_values = [
-                reservation["id"],
-                reservation["name"],
-                reservation["checkin"],
-                reservation["amount"]
-            ]
-            
-            for col, value in enumerate(cell_values):
-                cell_label = ctk.CTkLabel(
-                    row_frame,
-                    text=value,
-                    font=("Arial", 14),
-                    text_color="#475569",
-                    fg_color="white"
-                )
-                cell_label.grid(row=0, column=col, padx=(0, 40), sticky="w")
-                row_frame.grid_columnconfigure(col, weight=1)
-                cell_label.bind("<Button-1>", lambda e, f=row_frame: self.select_row(f))
-            
-            if row < len(display_data) - 1:
-                separator = ctk.CTkFrame(self.table_frame, height=1, fg_color="#f1f5f9")
-                separator.pack(fill="x", padx=20)
 
-    def select_row(self, row_frame):
-        """Select a row in the table"""
-        if hasattr(self, 'selected_row') and self.selected_row:
-            for widget in self.selected_row.winfo_children():
-                widget.configure(fg_color="white")
-            self.selected_row.configure(fg_color="white")
-        
-        row_frame.configure(fg_color="#e0f2fe")
-        for widget in row_frame.winfo_children():
-            widget.configure(fg_color="#e0f2fe")
-        
-        self.selected_row = row_frame
-        self.selected_reservation_id = row_frame.reservation_id
+        if not display_data:
+            # Show empty message if needed
+            return
+
+        # Insert data into treeview
+        for reservation in display_data:
+            # Add a space prefix to each value for visual padding
+            item = self.tree.insert("", "end", values=(
+                f" {reservation['id']}",
+                f" {reservation['name']}",
+                f" {reservation['checkin']}",
+                f" {reservation['amount']}"
+            ))
+
+    def on_tree_select(self, event):
+        """Handle treeview row selection"""
+        selection = self.tree.selection()
+        if selection:
+            item = self.tree.item(selection[0])
+            values = item["values"]
+            # Strip the space we added for padding when getting the ID
+            self.selected_reservation_id = values[0].strip()  # ID is the first column
 
     def search_reservations(self, event=None):
         """Filter reservations based on search query"""
         query = self.search_entry.get().lower()
-        
+
         if not query:
             self.display_reservations()
             return
-        
+
         filtered = [
-            r for r in self.reservations 
-            if (query in r["id"].lower() or 
-                query in r["name"].lower() or 
+            r for r in self.reservations
+            if (query in r["id"].lower() or
+                query in r["name"].lower() or
                 query in r["checkin"].lower())
         ]
-        
+
         self.display_reservations(filtered)
 
-    def sort_table(self, column_index):
-        """Sort reservations by the selected column"""
-        column_keys = ["id", "name", "checkin", "amount"]
-        key = column_keys[column_index]
-        
-        if self.sort_column == column_index:
+    def sort_treeview(self, column):
+        """Sort the treeview by the given column"""
+        # Determine sort order
+        if self.sort_column == column:
             self.sort_descending = not self.sort_descending
         else:
-            self.sort_column = column_index
+            self.sort_column = column
             self.sort_descending = False
-        
-        if key == "checkin":
+
+        # Define sort key functions
+        if column == "checkin":
             def sort_key(x):
                 try:
-                    return datetime.strptime(x[key], "%b %d, %Y")
+                    return datetime.strptime(x[column], "%b %d, %Y")
                 except:
                     return datetime.min
-        elif key == "amount":
+        elif column == "amount":
             def sort_key(x):
                 try:
-                    return float(x[key].replace("$", "").replace(",", ""))
+                    return float(x[column].replace("$", "").replace(",", ""))
                 except:
                     return 0.0
         else:
             def sort_key(x):
-                return x[key].lower()
-        
+                return x[column].lower()
+
+        # Sort the reservations
         sorted_reservations = sorted(
             self.reservations,
             key=sort_key,
             reverse=self.sort_descending
         )
-        
+
+        # Display the sorted data
         self.display_reservations(sorted_reservations)
+
+    # Helper method to validate check-in date
+    def validate_date(self, date_str):
+        """Validate that a date is today or in the future"""
+        try:
+            checkin_date = datetime.strptime(date_str, "%b %d, %Y").date()
+            today = date.today()
+
+            if checkin_date < today:
+                return False, "Check-in date cannot be in the past. Please select today or a future date."
+            return True, ""
+        except ValueError as e:
+            return False, f"Invalid date format: {str(e)}"
 
     def add_reservation(self):
         """Open dialog to add a new reservation"""
-        if not hasattr(self.controller, 'current_user') or self.controller.current_user is None:
-            messagebox.showerror("Error", "User not logged in")
-            self.controller.show_frame("LoginApp")
-            return
-            
         dialog = ctk.CTkToplevel(self)
         dialog.title("Add New Reservation")
         dialog.geometry("500x400")
         dialog.transient(self)
         dialog.grab_set()
-        
+
         dialog.update_idletasks()
         width = dialog.winfo_width()
         height = dialog.winfo_height()
         x = (dialog.winfo_screenwidth() // 2) - (width // 2)
         y = (dialog.winfo_screenheight() // 2) - (height // 2)
         dialog.geometry(f"{width}x{height}+{x}+{y}")
-        
+
+        # Add today's date in placeholder for better guidance
+        today_formatted = datetime.now().strftime("%b %d, %Y")
+
         fields = [
             ("ID Number", "#", "id"),
             ("Guest Name", "Full name", "name"),
-            ("Check-in Date", "MMM DD, YYYY", "checkin"),
+            ("Check-in Date", f"Format: {today_formatted} (today or future dates only)", "checkin"),
             ("Total Booking Amount", "$0.00", "amount")
         ]
-        
+
         entries = {}
-        
+
         for i, (label, placeholder, key) in enumerate(fields):
             frame = ctk.CTkFrame(dialog, fg_color="transparent")
             frame.pack(fill="x", padx=20, pady=10)
-            
+
             ctk.CTkLabel(
                 frame,
                 text=label,
                 font=("Arial", 14),
                 text_color="#475569"
             ).pack(anchor="w")
-            
+
             entry = ctk.CTkEntry(
                 frame,
                 placeholder_text=placeholder,
@@ -553,12 +538,16 @@ class HotelReservationsPage(ctk.CTkFrame):
                 border_width=1,
                 corner_radius=8
             )
+            # Pre-fill with today's date as a convenience
+            if key == "checkin":
+                entry.insert(0, today_formatted)
+
             entry.pack(fill="x")
             entries[key] = entry
-        
+
         button_frame = ctk.CTkFrame(dialog, fg_color="transparent")
         button_frame.pack(fill="x", padx=20, pady=20)
-        
+
         def save():
             new_reservation = {}
             for key, entry in entries.items():
@@ -567,22 +556,29 @@ class HotelReservationsPage(ctk.CTkFrame):
                     messagebox.showerror("Error", f"Please enter {key}")
                     return
                 new_reservation[key] = value
-            
+
+            # Validate amount
             try:
-                datetime.strptime(new_reservation["checkin"], "%b %d, %Y")
                 float(new_reservation["amount"].replace("$", "").replace(",", ""))
             except ValueError as e:
-                messagebox.showerror("Error", f"Invalid format: {str(e)}")
+                messagebox.showerror("Error", f"Invalid amount format: {str(e)}")
                 return
-            
+
+            # Validate checkin date
+            valid_date, error_msg = self.validate_date(new_reservation["checkin"])
+            if not valid_date:
+                messagebox.showerror("Error", error_msg)
+                return
+
+            # Check for duplicate ID
             if any(r["id"] == new_reservation["id"] for r in self.reservations):
                 messagebox.showerror("Error", "Reservation ID already exists")
                 return
-            
+
             if self.save_data(reservation_data=new_reservation):
                 dialog.destroy()
                 messagebox.showinfo("Success", "Reservation added successfully")
-        
+
         ctk.CTkButton(
             button_frame,
             text="Save",
@@ -590,7 +586,7 @@ class HotelReservationsPage(ctk.CTkFrame):
             hover_color="#2563eb",
             command=save
         ).pack(side="left", padx=10)
-        
+
         ctk.CTkButton(
             button_frame,
             text="Cancel",
@@ -601,57 +597,56 @@ class HotelReservationsPage(ctk.CTkFrame):
 
     def edit_reservation(self):
         """Open dialog to edit selected reservation"""
-        if not hasattr(self.controller, 'current_user') or self.controller.current_user is None:
-            messagebox.showerror("Error", "User not logged in")
-            self.controller.show_frame("LoginApp")
-            return
-            
-        if not hasattr(self, 'selected_reservation_id') or not self.selected_reservation_id:
+        if not self.selected_reservation_id:
             messagebox.showwarning("Warning", "Please select a reservation to edit")
             return
-        
+
         reservation = next(
             (r for r in self.reservations if r["id"] == self.selected_reservation_id),
             None
         )
-        
+
         if not reservation:
             messagebox.showerror("Error", "Selected reservation not found")
             return
-        
+
         dialog = ctk.CTkToplevel(self)
         dialog.title("Edit Reservation")
         dialog.geometry("500x400")
         dialog.transient(self)
         dialog.grab_set()
-        
+
         dialog.update_idletasks()
         width = dialog.winfo_width()
         height = dialog.winfo_height()
         x = (dialog.winfo_screenwidth() // 2) - (width // 2)
         y = (dialog.winfo_screenheight() // 2) - (height // 2)
         dialog.geometry(f"{width}x{height}+{x}+{y}")
-        
+
         fields = [
             ("ID Number", "id", False),
             ("Guest Name", "name", True),
             ("Check-in Date", "checkin", True),
             ("Total Booking Amount", "amount", True)
         ]
-        
+
         entries = {}
-        
+
         for i, (label, key, editable) in enumerate(fields):
             frame = ctk.CTkFrame(dialog, fg_color="transparent")
             frame.pack(fill="x", padx=20, pady=10)
-            
+
+            label_text = label
+            if key == "checkin":
+                label_text = f"{label} (today or future dates only)"
+
             ctk.CTkLabel(
                 frame,
-                text=label,
+                text=label_text,
                 font=("Arial", 14),
                 text_color="#475569"
             ).pack(anchor="w")
-            
+
             entry = ctk.CTkEntry(
                 frame,
                 height=40,
@@ -664,10 +659,10 @@ class HotelReservationsPage(ctk.CTkFrame):
             entry.configure(state="normal" if editable else "disabled")
             entry.pack(fill="x")
             entries[key] = entry
-        
+
         button_frame = ctk.CTkFrame(dialog, fg_color="transparent")
         button_frame.pack(fill="x", padx=20, pady=20)
-        
+
         def save():
             updated_reservation = {'id': reservation['id']}
             for key, entry in entries.items():
@@ -677,20 +672,26 @@ class HotelReservationsPage(ctk.CTkFrame):
                         messagebox.showerror("Error", f"Please enter {key}")
                         return
                     updated_reservation[key] = value
-            
-            try:
-                if "checkin" in updated_reservation:
-                    datetime.strptime(updated_reservation["checkin"], "%b %d, %Y")
-                if "amount" in updated_reservation:
+
+            # Validate amount
+            if "amount" in updated_reservation:
+                try:
                     float(updated_reservation["amount"].replace("$", "").replace(",", ""))
-            except ValueError as e:
-                messagebox.showerror("Error", f"Invalid format: {str(e)}")
-                return
-            
+                except ValueError as e:
+                    messagebox.showerror("Error", f"Invalid amount format: {str(e)}")
+                    return
+
+            # Validate checkin date
+            if "checkin" in updated_reservation:
+                valid_date, error_msg = self.validate_date(updated_reservation["checkin"])
+                if not valid_date:
+                    messagebox.showerror("Error", error_msg)
+                    return
+
             if self.save_data(reservation_data=updated_reservation):
                 dialog.destroy()
                 messagebox.showinfo("Success", "Reservation updated successfully")
-        
+
         ctk.CTkButton(
             button_frame,
             text="Save",
@@ -698,7 +699,7 @@ class HotelReservationsPage(ctk.CTkFrame):
             hover_color="#2563eb",
             command=save
         ).pack(side="left", padx=10)
-        
+
         ctk.CTkButton(
             button_frame,
             text="Cancel",
@@ -709,31 +710,25 @@ class HotelReservationsPage(ctk.CTkFrame):
 
     def delete_reservation(self):
         """Delete selected reservation"""
-        if not hasattr(self.controller, 'current_user') or self.controller.current_user is None:
-            messagebox.showerror("Error", "User not logged in")
-            self.controller.show_frame("LoginApp")
-            return
-            
-        if not hasattr(self, 'selected_reservation_id') or not self.selected_reservation_id:
+        if not self.selected_reservation_id:
             messagebox.showwarning("Warning", "Please select a reservation to delete")
             return
-        
+
         reservation = next(
             (r for r in self.reservations if r["id"] == self.selected_reservation_id),
             None
         )
-        
+
         if not reservation:
             messagebox.showerror("Error", "Selected reservation not found")
             return
-        
+
         if not messagebox.askyesno(
-            "Confirm", 
-            f"Are you sure you want to delete reservation {reservation['id']} for {reservation['name']}?"
+                "Confirm",
+                f"Are you sure you want to delete reservation {reservation['id']} for {reservation['name']}?"
         ):
             return
-        
+
         if self.save_data(delete_id=self.selected_reservation_id):
-            self.selected_row = None
             self.selected_reservation_id = None
             messagebox.showinfo("Success", "Reservation deleted successfully")

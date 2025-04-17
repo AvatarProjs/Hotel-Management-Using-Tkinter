@@ -1,9 +1,9 @@
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import messagebox
 from db_helper import DatabaseManager
 
-class CustomerManagementScreen(ctk.CTkFrame):
+class StaffMemberScreen(ctk.CTkFrame):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
@@ -18,7 +18,7 @@ class CustomerManagementScreen(ctk.CTkFrame):
         self.create_main_content()
         
         # Load initial data
-        self.filter_customers("all")
+        self.filter_staff("all")
     
     def create_sidebar(self):
         sidebar = ctk.CTkFrame(self, width=250, fg_color="#f0f9ff", corner_radius=0)
@@ -29,7 +29,9 @@ class CustomerManagementScreen(ctk.CTkFrame):
             ("Dashboard", "📊", "HotelBookingDashboard"),
             ("Reservations", "🛒", "HotelReservationsPage"), 
             ("Customers", "👥", "CustomerManagementScreen"),
-            ("Reports", "📄", "HotelReportsPage")
+            ("Reports", "📄", "HotelReportsPage"),
+            ("Staff Members", "👨‍💼", "StaffMemberScreen"),
+            ("Profile", "👤", "ProfilePage")
         ]
         
         # Add padding
@@ -38,7 +40,7 @@ class CustomerManagementScreen(ctk.CTkFrame):
         
         # Add navigation buttons
         for item, icon, frame_name in nav_items:
-            is_active = frame_name == "CustomerManagementScreen"
+            is_active = frame_name == "StaffMemberScreen"
             btn_color = "#dbeafe" if is_active else "transparent"
             
             btn_frame = ctk.CTkFrame(sidebar, fg_color=btn_color, corner_radius=8)
@@ -79,7 +81,7 @@ class CustomerManagementScreen(ctk.CTkFrame):
         ).pack(fill="x")
     
     def create_main_content(self):
-        """Create the main content area with customer management"""
+        """Create the main content area with staff member management"""
         # Main container
         main = ctk.CTkFrame(self, fg_color="white")
         main.grid(row=0, column=1, sticky="nsew")
@@ -109,7 +111,8 @@ class CustomerManagementScreen(ctk.CTkFrame):
             ("Dashboard", "HotelBookingDashboard"),
             ("Customers", "CustomerManagementScreen"),
             ("Reservations", "HotelReservationsPage"),
-            ("Reports", "HotelReportsPage")
+            ("Reports", "HotelReportsPage"),
+            ("Staff Members", "StaffMemberScreen")
         ]
         
         nav_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
@@ -131,7 +134,7 @@ class CustomerManagementScreen(ctk.CTkFrame):
             btn.pack(side="left", padx=15)
         
         # ===== SCROLLABLE CONTENT AREA =====
-        content = ctk.CTkFrame(main, fg_color="#f8fafc")
+        content = ctk.CTkScrollableFrame(main, fg_color="#f8fafc")
         content.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
         content.grid_columnconfigure(0, weight=1)
         
@@ -144,19 +147,19 @@ class CustomerManagementScreen(ctk.CTkFrame):
         # Search entry
         self.search_entry = ctk.CTkEntry(
             search_filter_frame,
-            placeholder_text="Search customers...",
+            placeholder_text="Search staff members...",
             width=300
         )
         self.search_entry.grid(row=0, column=0, sticky="w")
-        self.search_entry.bind("<KeyRelease>", self.search_customers)
+        self.search_entry.bind("<KeyRelease>", self.search_staff)
         
-        # Add customer button
+        # Add staff button
         ctk.CTkButton(
             search_filter_frame,
-            text="+ Add Customer",
+            text="+ Add Staff Member",
             fg_color="#3b82f6",
-            command=self.open_add_customer_dialog,
-            width=120
+            command=self.open_add_staff_dialog,
+            width=160
         ).grid(row=0, column=1, padx=(10, 0))
         
         # Filter buttons
@@ -170,7 +173,7 @@ class CustomerManagementScreen(ctk.CTkFrame):
             text="All",
             fg_color="#3b82f6" if self.active_filter.get() == "all" else "#e2e8f0",
             text_color="white" if self.active_filter.get() == "all" else "#2c3e50",
-            command=lambda: self.filter_customers("all"),
+            command=lambda: self.filter_staff("all"),
             width=80,
             height=30
         ).pack(side="left", padx=5)
@@ -180,7 +183,7 @@ class CustomerManagementScreen(ctk.CTkFrame):
             text="Active",
             fg_color="#3b82f6" if self.active_filter.get() == "active" else "#e2e8f0",
             text_color="white" if self.active_filter.get() == "active" else "#2c3e50",
-            command=lambda: self.filter_customers("active"),
+            command=lambda: self.filter_staff("active"),
             width=80,
             height=30
         ).pack(side="left", padx=5)
@@ -190,214 +193,176 @@ class CustomerManagementScreen(ctk.CTkFrame):
             text="Inactive",
             fg_color="#3b82f6" if self.active_filter.get() == "inactive" else "#e2e8f0",
             text_color="white" if self.active_filter.get() == "inactive" else "#2c3e50",
-            command=lambda: self.filter_customers("inactive"),
+            command=lambda: self.filter_staff("inactive"),
             width=80,
             height=30
         ).pack(side="left", padx=5)
         
-        # Create Treeview with scrollbars
-        tree_frame = ctk.CTkFrame(content, fg_color="white", corner_radius=10)
-        tree_frame.grid(row=2, column=0, sticky="nsew", pady=(0, 20))
-        tree_frame.grid_rowconfigure(0, weight=1)
-        tree_frame.grid_columnconfigure(0, weight=1)
+        # Staff member table
+        self.table_frame = ctk.CTkFrame(content, fg_color="white", corner_radius=10)
+        self.table_frame.grid(row=2, column=0, sticky="nsew", pady=(0, 20))
         
-        # Create a style for the Treeview
-        style = ttk.Style()
-        style.theme_use("default")
-        style.configure("Treeview",
-                       background="#ffffff",
-                       foreground="black",
-                       rowheight=35,
-                       fieldbackground="#ffffff",
-                       borderwidth=0)
-        style.map('Treeview', background=[('selected', '#3b82f6')])
+        # Table headers
+        headers = ["Staff ID", "Name", "Email", "Phone", "Address", "Status", "Actions"]
+        header_frame = ctk.CTkFrame(self.table_frame, fg_color="white")
+        header_frame.pack(fill="x", padx=15, pady=(15, 10))
         
-        style.configure("Treeview.Heading",
-                       background="#f1f5f9",
-                       foreground="#64748b",
-                       font=('Arial', 12, 'bold'),
-                       padding=5,
-                       borderwidth=0)
+        for col, header in enumerate(headers):
+            ctk.CTkLabel(
+                header_frame,
+                text=header,
+                font=("Arial", 12, "bold"),
+                text_color="#64748b"
+            ).grid(row=0, column=col, padx=5, pady=5, sticky="w")
+            header_frame.grid_columnconfigure(col, weight=1 if col < len(headers)-1 else 0)
         
-        # Create Treeview widget
-        self.tree = ttk.Treeview(
-            tree_frame,
-            columns=("ID", "Name", "Email", "Address", "Phone", "Status"),
-            show="headings",
-            selectmode="browse",
-            style="Treeview"
-        )
+        # Separator
+        ctk.CTkFrame(self.table_frame, height=2, fg_color="#e2e8f0").pack(fill="x", padx=15)
         
-        # Configure columns
-        self.tree.heading("ID", text="ID", anchor="w")
-        self.tree.heading("Name", text="Name", anchor="w")
-        self.tree.heading("Email", text="Email", anchor="w")
-        self.tree.heading("Address", text="Address", anchor="w")
-        self.tree.heading("Phone", text="Phone", anchor="w")
-        self.tree.heading("Status", text="Status", anchor="center")
-        
-        self.tree.column("ID", width=100, anchor="w")
-        self.tree.column("Name", width=150, anchor="w")
-        self.tree.column("Email", width=200, anchor="w")
-        self.tree.column("Address", width=200, anchor="w")
-        self.tree.column("Phone", width=120, anchor="w")
-        self.tree.column("Status", width=100, anchor="center")
-        
-        # Configure tags for status badges
-        self.tree.tag_configure('active_badge', background='#10b981', foreground='white')
-        self.tree.tag_configure('inactive_badge', background='#6b7280', foreground='white')
-        
-        # Add scrollbars
-        y_scroll = ctk.CTkScrollbar(tree_frame, orientation="vertical", command=self.tree.yview)
-        x_scroll = ctk.CTkScrollbar(tree_frame, orientation="horizontal", command=self.tree.xview)
-        self.tree.configure(yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set)
-        
-        # Grid layout
-        self.tree.grid(row=0, column=0, sticky="nsew")
-        y_scroll.grid(row=0, column=1, sticky="ns")
-        x_scroll.grid(row=1, column=0, sticky="ew")
-        
-        # Action buttons frame
-        action_frame = ctk.CTkFrame(content, fg_color="transparent")
-        action_frame.grid(row=3, column=0, sticky="e", pady=(0, 20))
-        
-        # Edit button
-        edit_btn = ctk.CTkButton(
-            action_frame,
-            text="Edit Selected",
-            fg_color="#3b82f6",
-            command=self.edit_selected_customer,
-            width=120
-        )
-        edit_btn.pack(side="left", padx=5)
-        
-        # Delete button
-        delete_btn = ctk.CTkButton(
-            action_frame,
-            text="Delete Selected",
-            fg_color="#ef4444",
-            command=self.delete_selected_customer,
-            width=120
-        )
-        delete_btn.pack(side="left", padx=5)
-        
-        # Bind double-click to edit
-        self.tree.bind("<Double-1>", lambda e: self.edit_selected_customer())
+        # Table content frame
+        self.table_content = ctk.CTkFrame(self.table_frame, fg_color="white")
+        self.table_content.pack(fill="both", expand=True, padx=15, pady=10)
     
-    def populate_table(self, customers):
-        """Populate the Treeview with customer data"""
-        # Clear existing items
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+    def populate_table(self, staff_members):
+        """Populate the table with staff member data"""
+        # Clear existing rows
+        for widget in self.table_content.winfo_children():
+            widget.destroy()
         
-        if not customers:
+        if not staff_members:
+            # Show message if no staff members found
+            ctk.CTkLabel(
+                self.table_content,
+                text="No staff members found",
+                text_color="#64748b",
+                font=("Arial", 12)
+            ).pack(pady=20)
             return
         
-        # Add customer data
-        for customer in customers:
-            item_id = self.tree.insert("", "end", values=(
-                customer['customer_id'],
-                customer['full_name'],
-                customer['email'],
-                customer['address'],
-                customer['phone'],
-                customer['status']
-            ))
+        # Add staff member rows
+        for row, staff in enumerate(staff_members):
+            row_frame = ctk.CTkFrame(self.table_content, fg_color="white")
+            row_frame.pack(fill="x", pady=5)
             
-            # Apply tag based on status
-            if customer['status'] == 'Active':
-                self.tree.item(item_id, tags=('active_badge',))
-            else:
-                self.tree.item(item_id, tags=('inactive_badge',))
+            # Display staff member data
+            for col, field in enumerate(["staff_id", "full_name", "email", "phone", "address", "status"]):
+                value = staff[field]
+                if field == "status":  # Status column
+                    status_frame = ctk.CTkFrame(
+                        row_frame,
+                        fg_color="#10b981" if value == "Active" else "#ef4444",
+                        corner_radius=12,
+                        width=80,
+                        height=25
+                    )
+                    status_frame.grid(row=0, column=col, padx=5, sticky="w")
+                    status_frame.grid_propagate(False)
+                    
+                    ctk.CTkLabel(
+                        status_frame,
+                        text=value,
+                        font=("Arial", 10),
+                        text_color="white"
+                    ).place(relx=0.5, rely=0.5, anchor="center")
+                else:
+                    ctk.CTkLabel(
+                        row_frame,
+                        text=value,
+                        font=("Arial", 12),
+                        text_color="#334155"
+                    ).grid(row=0, column=col, padx=5, sticky="w")
+                
+                row_frame.grid_columnconfigure(col, weight=1 if col < 5 else 0)
+            
+            # Action buttons
+            action_frame = ctk.CTkFrame(row_frame, fg_color="white")
+            action_frame.grid(row=0, column=6, padx=5, sticky="e")
+            
+            # Edit button
+            edit_btn = ctk.CTkButton(
+                action_frame,
+                text="Edit",
+                fg_color="#3b82f6",
+                text_color="white",
+                width=60,
+                height=25,
+                command=lambda s=staff: self.edit_staff(s)
+            )
+            edit_btn.pack(side="left", padx=2)
+            
+            # Delete button
+            delete_btn = ctk.CTkButton(
+                action_frame,
+                text="Delete",
+                fg_color="#ef4444",
+                text_color="white",
+                width=60,
+                height=25,
+                command=lambda s=staff: self.delete_staff(s)
+            )
+            delete_btn.pack(side="left", padx=2)
     
-    def get_selected_customer(self):
-        """Get the currently selected customer"""
-        selected_item = self.tree.focus()
-        if not selected_item:
-            messagebox.showwarning("Warning", "Please select a customer first")
-            return None
-        
-        item_data = self.tree.item(selected_item)
-        return {
-            'customer_id': item_data['values'][0],
-            'full_name': item_data['values'][1],
-            'email': item_data['values'][2],
-            'address': item_data['values'][3],
-            'phone': item_data['values'][4],
-            'status': item_data['values'][5]
-        }
-    
-    def edit_selected_customer(self):
-        """Edit the selected customer"""
-        customer = self.get_selected_customer()
-        if customer:
-            self.edit_customer(customer)
-    
-    def delete_selected_customer(self):
-        """Delete the selected customer"""
-        customer = self.get_selected_customer()
-        if customer:
-            self.delete_customer(customer)
-    
-    def filter_customers(self, status):
-        """Filter customers by status"""
+    def filter_staff(self, status):
+        """Filter staff members by status"""
         self.active_filter.set(status)
-        customers = self.db.get_customers(status)
-        self.populate_table(customers)
+        staff_members = self.db.get_staff_members(status)
+        self.populate_table(staff_members)
     
-    def search_customers(self, event):
-        """Search customers based on input"""
+    def search_staff(self, event):
+        """Search staff members based on input"""
         query = self.search_entry.get().strip()
         
         if not query:
-            self.filter_customers(self.active_filter.get())
+            self.filter_staff(self.active_filter.get())
             return
         
-        customers = self.db.search_customers(query)
-        self.populate_table(customers)
+        staff_members = self.db.search_staff_members(query)
+        self.populate_table(staff_members)
     
-    def open_add_customer_dialog(self):
-        """Open dialog to add new customer"""
+    def open_add_staff_dialog(self):
+        """Open dialog to add new staff member"""
         dialog = ctk.CTkToplevel(self)
-        dialog.title("Add New Customer")
-        dialog.geometry("500x500")
+        dialog.title("Add New Staff Member")
+        dialog.geometry("500x600")
         dialog.grab_set()
         
         # Form fields
         fields = [
-            ("ID Number", "text", ""),
+            ("Staff ID", "text", ""),
             ("Name", "text", ""),
             ("Email", "text", ""),
+            ("Phone", "text", ""),
             ("Address", "text", ""),
-            ("Contact Number", "text", ""),
-            ("Status", "combobox", "Active")
+            ("Status", "combobox", "Active"),
+            ("Password", "password", "")
         ]
         
-        self.setup_customer_form(dialog, fields, self.add_customer, "Add Customer")
+        self.setup_staff_form(dialog, fields, self.add_staff, "Add Staff Member")
     
-    def edit_customer(self, customer):
-        """Open dialog to edit existing customer"""
+    def edit_staff(self, staff):
+        """Open dialog to edit existing staff member"""
         dialog = ctk.CTkToplevel(self)
-        dialog.title("Edit Customer")
-        dialog.geometry("500x500")
+        dialog.title("Edit Staff Member")
+        dialog.geometry("500x600")
         dialog.grab_set()
         
         # Form fields with existing data
         fields = [
-            ("ID Number", "text_disabled", customer['customer_id']),
-            ("Name", "text", customer['full_name']),
-            ("Email", "text", customer['email']),
-            ("Address", "text", customer['address']),
-            ("Contact Number", "text", customer['phone']),
-            ("Status", "combobox", customer['status'])
+            ("Staff ID", "text_disabled", staff['staff_id']),
+            ("Name", "text", staff['full_name']),
+            ("Email", "text", staff['email']),
+            ("Phone", "text", staff['phone']),
+            ("Address", "text", staff['address']),
+            ("Status", "combobox", staff['status']),
+            ("Password", "password", "••••••••")  # Masked password
         ]
         
-        self.setup_customer_form(dialog, fields, 
-                               lambda entries, dlg: self.update_customer(customer['customer_id'], entries, dlg), 
-                               "Update Customer")
+        self.setup_staff_form(dialog, fields, 
+                           lambda entries, dlg: self.update_staff(staff['staff_id'], entries, dlg), 
+                           "Update Staff Member")
     
-    def setup_customer_form(self, dialog, fields, submit_action, submit_text):
-        """Helper method to setup customer form"""
+    def setup_staff_form(self, dialog, fields, submit_action, submit_text):
+        """Helper method to setup staff member form"""
         entries = {}
         
         for label, field_type, default_value in fields:
@@ -419,6 +384,12 @@ class CustomerManagementScreen(ctk.CTkFrame):
                 entry.configure(state="disabled")
                 entry.pack(fill="x")
                 entries[label] = entry
+            elif field_type == "password":
+                entry = ctk.CTkEntry(frame, show="•")
+                if default_value:
+                    entry.insert(0, default_value)
+                entry.pack(fill="x")
+                entries[label] = entry
             elif field_type == "combobox":
                 combo = ctk.CTkComboBox(frame, values=["Active", "Inactive"])
                 combo.set(default_value)
@@ -433,57 +404,63 @@ class CustomerManagementScreen(ctk.CTkFrame):
         )
         submit_btn.pack(pady=20)
     
-    def add_customer(self, entries, dialog):
-        """Add new customer to database"""
-        customer_data = {
-            'customer_id': entries["ID Number"].get(),
+    def add_staff(self, entries, dialog):
+        """Add new staff member to database"""
+        staff_data = {
+            'staff_id': entries["Staff ID"].get(),
             'full_name': entries["Name"].get(),
             'email': entries["Email"].get(),
+            'phone': entries["Phone"].get(),
             'address': entries["Address"].get(),
-            'phone': entries["Contact Number"].get(),
-            'status': entries["Status"].get()
+            'status': entries["Status"].get(),
+            'password': entries["Password"].get()
         }
         
-        if not all(customer_data.values()):
+        if not all(staff_data.values()):
             messagebox.showerror("Error", "Please fill in all fields")
             return
         
-        if self.db.add_customer(customer_data):
-            messagebox.showinfo("Success", "Customer added successfully!")
-            self.filter_customers(self.active_filter.get())
+        if self.db.add_staff_member(staff_data):
+            messagebox.showinfo("Success", "Staff member added successfully!")
+            self.filter_staff(self.active_filter.get())
             dialog.destroy()
         else:
-            messagebox.showerror("Error", "Failed to add customer")
+            messagebox.showerror("Error", "Failed to add staff member")
     
-    def update_customer(self, customer_id, entries, dialog):
-        """Update existing customer in database"""
+    def update_staff(self, staff_id, entries, dialog):
+        """Update existing staff member in database"""
         updated_data = {
             'full_name': entries["Name"].get(),
             'email': entries["Email"].get(),
+            'phone': entries["Phone"].get(),
             'address': entries["Address"].get(),
-            'phone': entries["Contact Number"].get(),
             'status': entries["Status"].get()
         }
+        
+        # Only update password if changed
+        password = entries["Password"].get()
+        if password != "••••••••":
+            updated_data['password'] = password
         
         if not all(updated_data.values()):
             messagebox.showerror("Error", "Please fill in all fields")
             return
         
-        if self.db.update_customer(customer_id, updated_data):
-            messagebox.showinfo("Success", "Customer updated successfully!")
-            self.filter_customers(self.active_filter.get())
+        if self.db.update_staff_member(staff_id, updated_data):
+            messagebox.showinfo("Success", "Staff member updated successfully!")
+            self.filter_staff(self.active_filter.get())
             dialog.destroy()
         else:
-            messagebox.showerror("Error", "Failed to update customer")
+            messagebox.showerror("Error", "Failed to update staff member")
     
-    def delete_customer(self, customer):
-        """Delete customer from database"""
-        if messagebox.askyesno("Confirm", f"Delete customer {customer['full_name']}?"):
-            if self.db.delete_customer(customer['customer_id']):
-                messagebox.showinfo("Success", "Customer deleted")
-                self.filter_customers(self.active_filter.get())
+    def delete_staff(self, staff):
+        """Delete staff member from database"""
+        if messagebox.askyesno("Confirm", f"Delete staff member {staff['full_name']}?"):
+            if self.db.delete_staff_member(staff['staff_id']):
+                messagebox.showinfo("Success", "Staff member deleted")
+                self.filter_staff(self.active_filter.get())
             else:
-                messagebox.showerror("Error", "Failed to delete customer")
+                messagebox.showerror("Error", "Failed to delete staff member")
     
     def __del__(self):
         """Clean up database connection when frame is destroyed"""

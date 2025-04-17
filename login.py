@@ -27,7 +27,7 @@ class LoginApp(ctk.CTkFrame):
 
         # Main login frame
         self.main_frame = ctk.CTkFrame(self, 
-                                     corner_radius=22, 
+                                     corner_radius=5, 
                                      fg_color="white", 
                                      bg_color="transparent")
         self.main_frame.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.4, relheight=0.6)

@@ -79,10 +79,10 @@ class RegistrationApp(ctk.CTkFrame):
                                      text_color="red")
         self.email_error_label.pack(anchor="w", padx=40)
 
-        ctk.CTkLabel(self.main_frame, 
-             text="You'll need to confirm this email later", 
-             font=("Arial", 10), 
-             text_color="gray").pack(anchor="w", padx=40)
+        # ctk.CTkLabel(self.main_frame, 
+        #      text="You'll need to confirm this email later", 
+        #      font=("Arial", 10), 
+        #      text_color="gray").pack(anchor="w", padx=40)
 
         # Gender Entry
         gender_frame = ctk.CTkFrame(self.main_frame, fg_color="white")
